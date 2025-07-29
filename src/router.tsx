@@ -1,9 +1,10 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
-import Login from './pages/auth/Login';
-import Dashboard from './pages/Dashboard';
-import Users from './pages/Users';
-import UserDetails from './pages/UserDetails';
-import Claims from './pages/Claims';
+import Login from './pages/Authentication/Login';
+import Dashboard from './pages/Dashboard/Dashboard';
+import UsersList from './pages/Dashboard/UsersList';
+import UserDetails from './pages/Dashboard/UserDetails';
+import Claims from './pages/Dashboard/Claims';
+import SearchPage from './pages/Dashboard/Search';
 import DashboardLayout from './layouts/DashboardLayout';
 import { useAuth } from './contexts/AuthContext';
 
@@ -51,7 +52,7 @@ export const router = createBrowserRouter([
     element: (
       <ProtectedRoute>
         <DashboardLayout>
-          <Users />
+          <UsersList />
         </DashboardLayout>
       </ProtectedRoute>
     ),
@@ -72,6 +73,16 @@ export const router = createBrowserRouter([
       <ProtectedRoute>
         <DashboardLayout>
           <Claims />
+        </DashboardLayout>
+      </ProtectedRoute>
+    ),
+  },
+  {
+    path: '/search',
+    element: (
+      <ProtectedRoute>
+        <DashboardLayout>
+          <SearchPage />
         </DashboardLayout>
       </ProtectedRoute>
     ),

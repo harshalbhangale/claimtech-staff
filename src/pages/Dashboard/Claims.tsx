@@ -23,7 +23,6 @@ import {
   StatLabel,
   StatNumber,
   StatHelpText,
-  Progress,
   Menu,
   MenuButton,
   MenuList,
@@ -44,19 +43,12 @@ import {
   Search, 
   Plus, 
   MoreVertical,
-  Filter,
   Download,
   Eye,
   Edit,
   Trash2,
   CheckCircle,
-  Clock,
   AlertCircle,
-  DollarSign,
-  Calendar,
-  User,
-  FileText,
-  ChevronDown
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useState } from 'react';

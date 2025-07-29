@@ -6,24 +6,10 @@ export interface LoginCredentials {
 }
 
 export interface LoginResponse {
-  token?: string;
-  access_token?: string;
-  user?: {
-    id: string;
-    email: string;
-    name: string;
-    role: string;
-    username?: string;
-  };
-  data?: {
-    token?: string;
-    access_token?: string;
-    user?: {
-      id: string;
-      email: string;
-      name: string;
-      role: string;
-    };
+  admin_id: string;
+  tokens: {
+    access: string;
+    refresh: string;
   };
 }
 

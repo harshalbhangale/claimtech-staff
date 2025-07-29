@@ -29,7 +29,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Check if user is already logged in on app start
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('authToken');
+      const token = localStorage.getItem('authToken') || localStorage.getItem('access_token');
       const savedUser = localStorage.getItem('user');
 
       if (token && savedUser) {
@@ -38,6 +38,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         } catch (error) {
           console.error('Error parsing saved user:', error);
           localStorage.removeItem('authToken');
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
           localStorage.removeItem('user');
         }
       }
@@ -53,51 +55,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setError(null);
       
       console.log('Attempting login with:', credentials);
-      const response = await authAPI.login(credentials);
+      const response: LoginResponse = await authAPI.login(credentials);
       console.log('Login response:', response);
       
-      // Handle different possible response structures
-      let token: string;
-      let userData: User;
+      // Handle the actual response structure
+      const token = response.tokens?.access;
+      const refreshToken = response.tokens?.refresh;
       
-      if (response.token && response.user) {
-        // Expected structure
-        token = response.token;
-        userData = response.user;
-      } else if (response.access_token) {
-        // Alternative structure
-        token = response.access_token;
-        userData = {
-          id: response.user?.id || '1',
-          email: credentials.email,
-          name: response.user?.name || response.user?.username || 'User',
-          role: response.user?.role || 'admin'
-        };
-      } else if (response.data) {
-        // Nested structure
-        token = response.data.token || response.data.access_token || '';
-        userData = response.data.user || {
-          id: '1',
-          email: credentials.email,
-          name: 'User',
-          role: 'admin'
-        };
-      } else {
-        // Fallback - create user data from credentials
-        token = response.token || response.access_token || 'dummy-token';
-        userData = {
-          id: '1',
-          email: credentials.email,
-          name: credentials.email.split('@')[0],
-          role: 'admin'
-        };
+      if (!token) {
+        throw new Error('No access token received from server');
       }
+      
+      const userData: User = {
+        id: response.admin_id || '1',
+        email: credentials.email,
+        name: credentials.email.split('@')[0],
+        role: 'admin'
+      };
       
       console.log('Processed token:', token);
       console.log('Processed user data:', userData);
       
-      // Save token and user data
+      // Save tokens and user data
       localStorage.setItem('authToken', token);
+      localStorage.setItem('access_token', token);
+      localStorage.setItem('refresh_token', refreshToken || '');
       localStorage.setItem('user', JSON.stringify(userData));
       
       setUser(userData);
@@ -128,6 +110,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     } catch (error) {
       console.error('Logout error:', error);
     } finally {
+      // Clear all tokens and user data
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('access_token');
+      localStorage.removeItem('refresh_token');
+      localStorage.removeItem('user');
       setUser(null);
     }
   };
