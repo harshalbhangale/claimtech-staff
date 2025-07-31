@@ -1,6 +1,6 @@
 import { Box} from '@chakra-ui/react';
-import Navbar from './Navbar';
-import Sidebar from './Sidebar';
+import Navbar from '../components/dashboard/Navbar';
+import Sidebar from '../components/dashboard/Sidebar';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
