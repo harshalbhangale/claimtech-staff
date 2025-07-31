@@ -18,15 +18,9 @@ import {
   InputGroup,
   InputLeftElement,
   InputRightElement,
-  Divider,
-  Flex,
   Spinner,
-  Alert,
-  AlertIcon,
-  AlertTitle,
-  AlertDescription
 } from '@chakra-ui/react';
-import { keyframes } from '@emotion/react';
+
 import { 
   Search, 
   Filter, 
@@ -39,9 +33,6 @@ import {
   Eye,
   Edit,
   MoreVertical,
-  Star,
-  CheckCircle,
-  Clock,
   TrendingUp,
   X,
   DollarSign,
@@ -50,23 +41,6 @@ import {
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 
-// Animation keyframes
-const fadeInUp = keyframes`
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-`;
-
-const pulse = keyframes`
-  0% { transform: scale(1); }
-  50% { transform: scale(1.05); }
-  100% { transform: scale(1); }
-`;
 
 // Motion components
 const MotionBox = motion(Box);

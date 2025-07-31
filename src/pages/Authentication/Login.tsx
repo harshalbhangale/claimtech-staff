@@ -1,27 +1,31 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-  Box, 
-  VStack, 
-  HStack, 
-  Text, 
-  Input, 
-  Button, 
-  Card, 
+import {
+  Box,
+  VStack,
+  HStack,
+  Text,
+  Input,
+  Button,
+  Card,
   CardBody,
   Divider,
   IconButton,
   Alert,
   AlertIcon,
   Image,
+  Collapse,
 } from '@chakra-ui/react';
-import { Eye, EyeOff, Lock, Mail } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, X} from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function Login() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [validationErrors, setValidationErrors] = useState<{ email?: string; password?: string }>({});
+  const [showBackendError, setShowBackendError] = useState(false); // Controls visibility of backend error alert
+
   const navigate = useNavigate();
   const { login, isLoading, error, clearError, isAuthenticated } = useAuth();
 
@@ -33,28 +37,133 @@ export default function Login() {
     }
   }, [isAuthenticated, navigate]);
 
-  // Clear error when component mounts or when user starts typing
+  // Clear validation errors and backend error when component mounts or when user starts typing
   useEffect(() => {
     clearError();
+    setValidationErrors({});
+    setShowBackendError(false);
   }, [clearError]);
+
+  // Show backend error alert when a backend error occurs
+  useEffect(() => {
+    if (error) {
+      setShowBackendError(true);
+    }
+  }, [error]);
+
+  const validateEmail = (email: string): string | undefined => {
+    if (!email) return 'Email is required';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return 'Please enter a valid email address';
+    }
+    return undefined;
+  };
+
+  const validatePassword = (password: string): string | undefined => {
+    if (!password) return 'Password is required';
+    if (password.length < 6) {
+      return 'Password must be at least 6 characters long';
+    }
+    return undefined;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
-    if (!email || !password) {
+
+    // Client-side validation
+    const emailError = validateEmail(email);
+    const passwordError = validatePassword(password);
+
+    const newValidationErrors: { email?: string; password?: string } = {};
+    if (emailError) newValidationErrors.email = emailError;
+    if (passwordError) newValidationErrors.password = passwordError;
+
+    setValidationErrors(newValidationErrors);
+
+    if (Object.keys(newValidationErrors).length > 0) {
+      setShowBackendError(false); // Hide backend error if client-side validation fails
       return;
     }
 
     try {
       console.log('Submitting login form...');
+      // Clear any previous backend error before new attempt
+      clearError();
+      setShowBackendError(false);
+
       await login({ email, password });
       console.log('Login successful, user should be redirected');
       // Don't navigate here - let the useEffect handle it
-    } catch (error) {
-      // Error is handled by the auth context
-      console.error('Login failed:', error);
+    } catch (err) {
+      // Error is handled by the auth context and will trigger useEffect for setShowBackendError
+      console.error('Login failed:', err);
     }
   };
+
+  const handleInputChange = (field: 'email' | 'password', value: string) => {
+    // Clear validation errors for the field as user types
+    setValidationErrors(prev => ({ ...prev, [field]: undefined }));
+
+    if (field === 'email') {
+      setEmail(value);
+    } else {
+      setPassword(value);
+    }
+
+    // Hide backend error message when user starts typing
+    if (error && showBackendError) {
+      setShowBackendError(false);
+      clearError();
+    }
+  };
+
+  const getErrorMessage = (backendError: string): string => {
+    const errorMap: { [key: string]: string } = {
+      'Invalid credentials': 'Incorrect email or password. Please try again.',
+      'User not found': 'No account found with this email address.',
+      'Invalid password': 'Incorrect password. Please check your password and try again.',
+      'Account locked': 'Your account has been temporarily locked. Please contact support.',
+      'Too many attempts': 'Too many login attempts. Please try again later.',
+      'Network error': 'Connection error. Please check your internet connection.',
+      'Server error': 'Server is temporarily unavailable. Please try again.',
+      'Unauthorized': 'Access denied. Please check your credentials.',
+      'Forbidden': 'Access denied. Please contact your administrator.',
+      'Request failed with status code 401': 'Incorrect email or password. Please try again.',
+      '401': 'Incorrect email or password. Please try again.',
+    };
+
+    if (errorMap[backendError]) {
+      return errorMap[backendError];
+    }
+
+    const lowerError = backendError.toLowerCase();
+    if (lowerError.includes('401') || (lowerError.includes('invalid') && lowerError.includes('credential'))) {
+      return 'Incorrect email or password. Please try again.';
+    }
+    if (lowerError.includes('403') || lowerError.includes('forbidden')) {
+      return 'Access denied. Please contact your administrator.';
+    }
+    if (lowerError.includes('404') || lowerError.includes('not found')) {
+      return 'Service not found or user not found. Please verify details.';
+    }
+    if (lowerError.includes('500') || lowerError.includes('server') || lowerError.includes('unavailable')) {
+      return 'Server is temporarily unavailable. Please try again.';
+    }
+    if (lowerError.includes('network') || lowerError.includes('connection')) {
+      return 'Connection error. Please check your internet connection.';
+    }
+
+    return 'Login failed. Please check your credentials and try again.';
+  };
+
+  // Determine if specific input fields should be highlighted due to backend error
+  const shouldHighlightForBackendError = (_field: 'email' | 'password') => {
+    const commonAuthErrors = ['401', 'unauthorized', 'invalid credentials', 'user not found', 'invalid password', 'forbidden'];
+    const backendErrorString = error?.toLowerCase() || '';
+
+    return showBackendError && commonAuthErrors.some(err => backendErrorString.includes(err));
+  };
+
 
   return (
     <Box
@@ -115,12 +224,45 @@ export default function Login() {
               </Text>
             </VStack>
 
-            {/* Error Alert */}
+            {/* Error Alert with Toggle */}
             {error && (
-              <Alert status="error" borderRadius="md">
-                <AlertIcon />
-                {error}
-              </Alert>
+              <Collapse in={showBackendError} animateOpacity>
+                <Alert
+                  status="error"
+                  borderRadius="md"
+                  position="relative"
+                  bg="red.50"
+                  border="1px solid"
+                  borderColor="red.200"
+                  boxShadow="sm"
+                >
+                  <AlertIcon color="red.500" />
+                  <Box flex="1">
+                    <VStack align="start" spacing={1}>
+                      <Text color="red.700" fontSize="sm" fontWeight="semibold">
+                        {getErrorMessage(error)}
+                      </Text>
+                      {shouldHighlightForBackendError('email') ? ( // Show tip only for specific authentication errors
+                        <Text color="red.600" fontSize="xs">
+                          💡 Tip: Double-check your email and password. Passwords are case-sensitive.
+                        </Text>
+                      ) : null}
+                    </VStack>
+                  </Box>
+                  <IconButton
+                    aria-label="Close error message"
+                    icon={<X size={14} />}
+                    size="sm"
+                    variant="ghost"
+                    color="red.500"
+                    _hover={{ bg: 'red.100' }}
+                    onClick={() => setShowBackendError(false)}
+                    position="absolute"
+                    right={2}
+                    top={2}
+                  />
+                </Alert>
+              </Collapse>
             )}
 
             <Box w="full">
@@ -136,11 +278,16 @@ export default function Login() {
                         type="email"
                         placeholder="Enter your email"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => handleInputChange('email', e.target.value)}
+                        onBlur={() => setValidationErrors(prev => ({ ...prev, email: validateEmail(email) }))} // Validate on blur
                         pl={10}
                         size="lg"
                         borderRadius="lg"
-                        borderColor="gray.300"
+                        borderColor={
+                          validationErrors.email || shouldHighlightForBackendError('email')
+                            ? 'red.300'
+                            : email ? 'green.300' : 'gray.300' // Green if valid and filled, gray otherwise
+                        }
                         _focus={{
                           borderColor: 'brand.500',
                           boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)',
@@ -152,10 +299,19 @@ export default function Login() {
                         left={3}
                         top="50%"
                         transform="translateY(-50%)"
-                        color="gray.400"
+                        color={
+                          validationErrors.email || shouldHighlightForBackendError('email')
+                            ? 'red.400'
+                            : email ? 'green.400' : 'gray.400'
+                        }
                       >
                         <Mail size={16} />
                       </Box>
+                      {validationErrors.email && (
+                        <Text fontSize="xs" color="red.500" mt={1}>
+                          {validationErrors.email}
+                        </Text>
+                      )}
                     </Box>
                   </Box>
 
@@ -169,12 +325,17 @@ export default function Login() {
                         type={showPassword ? 'text' : 'password'}
                         placeholder="Enter your password"
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(e) => handleInputChange('password', e.target.value)}
+                        onBlur={() => setValidationErrors(prev => ({ ...prev, password: validatePassword(password) }))} // Validate on blur
                         pl={10}
                         pr={10}
                         size="lg"
                         borderRadius="lg"
-                        borderColor="gray.300"
+                        borderColor={
+                          validationErrors.password || shouldHighlightForBackendError('password')
+                            ? 'red.300'
+                            : password ? 'green.300' : 'gray.300'
+                        }
                         _focus={{
                           borderColor: 'brand.500',
                           boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)',
@@ -186,7 +347,11 @@ export default function Login() {
                         left={3}
                         top="50%"
                         transform="translateY(-50%)"
-                        color="gray.400"
+                        color={
+                          validationErrors.password || shouldHighlightForBackendError('password')
+                            ? 'red.400'
+                            : password ? 'green.400' : 'gray.400'
+                        }
                       >
                         <Lock size={16} />
                       </Box>
@@ -204,6 +369,11 @@ export default function Login() {
                         _hover={{ color: 'gray.600' }}
                         isDisabled={isLoading}
                       />
+                      {validationErrors.password && (
+                        <Text fontSize="xs" color="red.500" mt={1}>
+                          {validationErrors.password}
+                        </Text>
+                      )}
                     </Box>
                   </Box>
 

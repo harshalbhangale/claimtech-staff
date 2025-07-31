@@ -44,11 +44,14 @@ import {
   Mail,
   Phone,
   Calendar,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { usersAPI, type User as UserType, type UsersParams } from '../../api/users';
+import { usersAPI, type User as UserType, type UsersParams } from '../../api/users'; // Ensure this path is correct for your project
 
 // Motion components
 const MotionBox = motion(Box);
@@ -60,10 +63,12 @@ export default function Users() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, _setPageSize] = useState(10);
+  const [pageSize] = useState(10); // Fixed at 10 users per page
   const [totalCount, setTotalCount] = useState(0);
   const [searchQuery, setSearchQuery] = useState('');
-  const [ordering, _setOrdering] = useState('created_at');
+  const [ordering, setOrdering] = useState('created_at');
+  const [sortField, setSortField] = useState<'name' | 'email' | 'age' | 'created_at'>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isPageChanging, setIsPageChanging] = useState(false);
 
@@ -72,6 +77,50 @@ export default function Users() {
   const textColor = useColorModeValue('gray.800', 'white');
 
   const toast = useToast();
+
+  // Handle column sorting
+  const handleSort = (field: 'name' | 'email' | 'age' | 'created_at') => {
+    console.log('🔄 Sorting clicked for field:', field);
+    
+    let newDirection: 'asc' | 'desc' = 'asc';
+    
+    if (sortField === field) {
+      // Toggle direction if same field
+      newDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    }
+    
+    setSortField(field);
+    setSortDirection(newDirection);
+    
+    // Convert to API ordering format
+    let apiOrdering = '';
+    switch (field) {
+      case 'name':
+        apiOrdering = newDirection === 'desc' ? '-first_name' : 'first_name';
+        break;
+      case 'email':
+        apiOrdering = newDirection === 'desc' ? '-email' : 'email';
+        break;
+      case 'age':
+        apiOrdering = newDirection === 'desc' ? '-date_of_birth' : 'date_of_birth';
+        break;
+      case 'created_at':
+        apiOrdering = newDirection === 'desc' ? '-created_at' : 'created_at';
+        break;
+    }
+    
+    console.log('📊 Setting API ordering to:', apiOrdering);
+    setOrdering(apiOrdering);
+    setCurrentPage(1); // Reset to first page when sorting
+  };
+
+  // Get sort icon for column headers
+  const getSortIcon = (field: 'name' | 'email' | 'age' | 'created_at') => {
+    if (sortField !== field) {
+      return ArrowUpDown;
+    }
+    return sortDirection === 'asc' ? ArrowUp : ArrowDown;
+  };
 
   // Memoized age calculation for better performance
   const calculateAge = useMemo(() => {
@@ -104,18 +153,29 @@ export default function Users() {
         ordering: ordering
       };
 
+      console.log('Fetching users with params:', params);
       const response = await usersAPI.getUsers(params);
+      console.log('API Response:', response);
       
-      // Handle different response structures
-      const usersData = response.results || (response as any).data || (response as any) || [];
-      const totalCountData = response.count || (response as any).total || 0;
+      // Handle different response structures based on typical API responses
+      const usersData = response.results || (response as any).data?.results || (response as any).data || (response as any) || [];
+      const totalCountData = response.count || (response as any).data?.count || (response as any).total || 0;
+      
+      console.log('Users data:', usersData);
+      console.log('Total count:', totalCountData);
       
       // Calculate age for each user (optimized)
-      const usersWithAge = usersData.map(user => {
-        console.log('User data:', user); // Debug: log each user to see the structure
+      const usersWithAge = usersData.map((user: any) => { // Cast user to 'any' for flexible property access
         return {
           ...user,
-          age: user.date_of_birth ? calculateAge(user.date_of_birth) : 0
+          age: user.date_of_birth ? calculateAge(user.date_of_birth) : 0,
+          id: user.id, // Fallback ID for display
+          first_name: user.first_name || 'N/A',
+          last_name: user.last_name || 'N/A',
+          email: user.email || 'N/A',
+          is_active: user.is_active !== undefined ? user.is_active : true, // Default to true if not provided
+          created_at: user.created_at || new Date().toISOString(),
+          phone: user.phone || user.phone_number || user.mobile || user.mobile_number || 'No phone',
         };
       });
 
@@ -124,6 +184,7 @@ export default function Users() {
       setIsInitialLoad(false);
       setIsPageChanging(false);
     } catch (err: any) {
+      console.error('Error fetching users:', err);
       const errorMessage = err.response?.data?.message || 
                           err.response?.data?.detail || 
                           err.message || 
@@ -147,16 +208,19 @@ export default function Users() {
 
   // Optimized useEffect with debounced search
   useEffect(() => {
+    console.log('useEffect triggered with:', { currentPage, pageSize, searchQuery, ordering });
     const timer = setTimeout(() => {
+      console.log('Executing fetchUsers with searchQuery:', searchQuery);
       fetchUsers();
     }, searchQuery ? 300 : 0); // Debounce search, immediate for other changes
 
     return () => clearTimeout(timer);
-  }, [currentPage, pageSize, searchQuery, ordering]);
+  }, [currentPage, pageSize, searchQuery, ordering]); // Dependencies for refetching users
 
   // Reset to first page when searching
   useEffect(() => {
     if (searchQuery !== '') {
+      console.log('🔍 Search query changed, resetting to page 1');
       setCurrentPage(1);
     }
   }, [searchQuery]);
@@ -167,7 +231,8 @@ export default function Users() {
   const endItem = Math.min(currentPage * pageSize, totalCount);
 
   const handlePageChange = (page: number) => {
-    if (page !== currentPage && !isPageChanging) {
+    // Prevent changing page if already changing or if page is out of bounds
+    if (page !== currentPage && !isPageChanging && page >= 1 && page <= totalPages) {
       setIsPageChanging(true);
       setCurrentPage(page);
     }
@@ -180,7 +245,7 @@ export default function Users() {
   // Loading skeleton component
   const LoadingSkeleton = () => (
     <VStack spacing={4} align="stretch">
-      {[...Array(5)].map((_, i) => (
+      {[...Array(pageSize)].map((_, i) => ( // Render skeleton items equal to pageSize
         <HStack key={i} spacing={4} p={4} bg={cardBg} borderRadius="lg">
           <Skeleton height="40px" width="40px" borderRadius="full" />
           <VStack flex="1" align="start" spacing={2}>
@@ -195,72 +260,141 @@ export default function Users() {
   );
 
   return (
-    <Box bg={bgColor} minH="100vh">
+    <Box bg={bgColor} minH="100vh" py={8}>
       <Container maxW="container.xl">
-        {/* Header */}
+        {/* Enhanced Header */}
         <MotionBox
           initial={{ opacity: 0, y: -20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5 }}
-          mb={6}
+          mb={8}
         >
-          <HStack justify="space-between" mb={6}>
-            <VStack align="start" spacing={2}>
-              <Heading size="lg" color={textColor}>
-                Users Management
-              </Heading>
-              <Text color="gray.600">
-                Manage and view all registered users
-              </Text>
-            </VStack>
-          </HStack>
+          <Box
+            bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+            borderRadius="xl"
+            p={6}
+            color="white"
+            position="relative"
+            overflow="hidden"
+            _before={{
+              content: '""',
+              position: 'absolute',
+              top: '-50%',
+              right: '-20%',
+              width: '200%',
+              height: '200%',
+              background: 'radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%)',
+              borderRadius: '50%',
+              zIndex: 0
+            }}
+          >
+            <HStack justify="space-between" position="relative" zIndex={1}>
+              <VStack align="start" spacing={3}>
+                <Heading size="lg" fontWeight="bold">
+                  Users Management
+                </Heading>
+              </VStack>
+            </HStack>
+          </Box>
         </MotionBox>
 
-        {/* Search and Filters */}
+        {/* Enhanced Search and Filters */}
         <MotionCard
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
           bg={cardBg}
-          borderRadius="xl"
+          borderRadius="2xl"
           p={6}
-          mb={6}
-          shadow="sm"
+          mb={8}
+          shadow="xl"
+          border="1px solid"
+          borderColor="purple.100"
+          _hover={{ shadow: "2xl", transform: "translateY(-2px)" }}
         >
-          <HStack w="full" spacing={4}>
-            {/* Search Input */}
-            <Box flex="1" position="relative">
-              <Input
-                placeholder="Search users by name, email, or phone..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                pl={10}
-                borderRadius="lg"
-                size="md"
-              />
-              <Icon
-                as={Search}
-                position="absolute"
-                left={3}
-                top="50%"
-                transform="translateY(-50%)"
-                color="gray.400"
-                boxSize={5}
-              />
-            </Box>
+          <VStack spacing={4}>
+            <HStack w="full" justify="space-between">
+              <Text fontSize="lg" fontWeight="semibold" color={textColor}>
+                Search & Filters
+              </Text>
+              <Badge colorScheme="purple" variant="subtle" px={3} py={1} borderRadius="full">
+                {totalCount} Users
+              </Badge>
+            </HStack>
+            
+            <HStack w="full" spacing={4}>
+              {/* Enhanced Search Input */}
+              <Box flex="1" position="relative">
+                <Input
+                  placeholder="Search users by name, email, phone, or ID..."
+                  value={searchQuery}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    console.log('🔍 Search input changed:', value);
+                    setSearchQuery(value);
+                  }}
+                  pl={12}
+                  pr={searchQuery ? 12 : 4}
+                  borderRadius="xl"
+                  size="lg"
+                  isDisabled={loading}
+                  bg={useColorModeValue('gray.50', 'gray.700')}
+                  border="2px solid"
+                  borderColor="transparent"
+                  _focus={{
+                    borderColor: 'purple.400',
+                    boxShadow: '0 0 0 1px purple.400',
+                    bg: 'white'
+                  }}
+                  _hover={{ bg: 'white' }}
+                  autoComplete="off"
+                />
+                <Icon
+                  as={Search}
+                  position="absolute"
+                  left={4}
+                  top="50%"
+                  transform="translateY(-50%)"
+                  color={loading ? "purple.400" : searchQuery ? "purple.600" : "gray.400"}
+                  boxSize={5}
+                />
+                {searchQuery && (
+                  <IconButton
+                    aria-label="Clear search"
+                    icon={<Text fontSize="lg" fontWeight="bold">×</Text>}
+                    position="absolute"
+                    right={2}
+                    top="50%"
+                    transform="translateY(-50%)"
+                    size="sm"
+                    variant="ghost"
+                    colorScheme="purple"
+                    onClick={() => {
+                      console.log('🧹 Clearing search query');
+                      setSearchQuery('');
+                    }}
+                    borderRadius="full"
+                    _hover={{ bg: 'purple.100' }}
+                  />
+                )}
+              </Box>
 
-            {/* Refresh Button */}
-            <Tooltip label="Refresh">
-              <IconButton
-                aria-label="Refresh"
-                icon={<RefreshCw size={16} />}
-                onClick={handleRefresh}
-                isLoading={loading}
-                variant="ghost"
-                borderRadius="lg"
-              />
-            </Tooltip>
-          </HStack>
+              {/* Enhanced Refresh Button */}
+              <Tooltip label="Refresh data" hasArrow>
+                <IconButton
+                  aria-label="Refresh"
+                  icon={<RefreshCw size={18} />}
+                  onClick={handleRefresh}
+                  isLoading={loading}
+                  variant="outline"
+                  colorScheme="purple"
+                  borderRadius="xl"
+                  size="lg"
+                  _hover={{ bg: 'purple.50' }}
+                />
+              </Tooltip>
+            </HStack>
+          </VStack>
         </MotionCard>
 
         {/* Error Alert */}
@@ -272,15 +406,17 @@ export default function Users() {
           </Alert>
         )}
 
-        {/* Users Table */}
+        {/* Enhanced Users Table */}
         <MotionCard
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
           bg={cardBg}
-          borderRadius="xl"
+          borderRadius="2xl"
           overflow="hidden"
-          shadow="sm"
+          shadow="xl"
+          border="1px solid"
+          borderColor="purple.100"
         >
           {loading ? (
             <Box p={6}>
@@ -318,93 +454,256 @@ export default function Users() {
               <Box overflowX="auto">
                 <Table variant="simple">
                   <Thead>
-                    <Tr bg={useColorModeValue('gray.50', 'gray.700')}>
-                      <Th px={6} py={4}>User</Th>
-                      <Th px={6} py={4}>Contact</Th>
-                      <Th px={6} py={4}>Age</Th>
-                      <Th px={6} py={4}>Status</Th>
-                      <Th px={6} py={4}>Created</Th>
-                      <Th px={6} py={4} textAlign="center">Actions</Th>
+                    <Tr bg="linear-gradient(135deg, #f7fafc 0%, #edf2f7 100%)">
+                      <Th 
+                        px={6} 
+                        py={5} 
+                        fontSize="sm" 
+                        fontWeight="bold" 
+                        color="purple.700"
+                        textTransform="uppercase"
+                        letterSpacing="wide"
+                        cursor="pointer"
+                        _hover={{ bg: 'purple.50', color: 'purple.800' }}
+                        onClick={() => handleSort('name')}
+                        transition="all 0.2s"
+                      >
+                        <HStack spacing={2}>
+                          <Text>User</Text>
+                          <Icon 
+                            as={getSortIcon('name')} 
+                            boxSize={4} 
+                            color={sortField === 'name' ? 'purple.600' : 'purple.400'}
+                          />
+                        </HStack>
+                      </Th>
+                      <Th 
+                        px={6} 
+                        py={5} 
+                        fontSize="sm" 
+                        fontWeight="bold" 
+                        color="purple.700"
+                        textTransform="uppercase"
+                        letterSpacing="wide"
+                        cursor="pointer"
+                        _hover={{ bg: 'purple.50', color: 'purple.800' }}
+                        onClick={() => handleSort('email')}
+                        transition="all 0.2s"
+                      >
+                        <HStack spacing={2}>
+                          <Text>Contact</Text>
+                          <Icon 
+                            as={getSortIcon('email')} 
+                            boxSize={4} 
+                            color={sortField === 'email' ? 'purple.600' : 'purple.400'}
+                          />
+                        </HStack>
+                      </Th>
+                      <Th 
+                        px={6} 
+                        py={5} 
+                        fontSize="sm" 
+                        fontWeight="bold" 
+                        color="purple.700"
+                        textTransform="uppercase"
+                        letterSpacing="wide"
+                        cursor="pointer"
+                        _hover={{ bg: 'purple.50', color: 'purple.800' }}
+                        onClick={() => handleSort('age')}
+                        transition="all 0.2s"
+                      >
+                        <HStack spacing={2}>
+                          <Text>Age</Text>
+                          <Icon 
+                            as={getSortIcon('age')} 
+                            boxSize={4} 
+                            color={sortField === 'age' ? 'purple.600' : 'purple.400'}
+                          />
+                        </HStack>
+                      </Th>
+                      <Th 
+                        px={6} 
+                        py={5} 
+                        fontSize="sm" 
+                        fontWeight="bold" 
+                        color="purple.700"
+                        textTransform="uppercase"
+                        letterSpacing="wide"
+                        cursor="pointer"
+                        _hover={{ bg: 'purple.50', color: 'purple.800' }}
+                        onClick={() => handleSort('created_at')}
+                        transition="all 0.2s"
+                      >
+                        <HStack spacing={2}>
+                          <Text>Created</Text>
+                          <Icon 
+                            as={getSortIcon('created_at')} 
+                            boxSize={4} 
+                            color={sortField === 'created_at' ? 'purple.600' : 'purple.400'}
+                          />
+                        </HStack>
+                      </Th>
+                      <Th 
+                        px={6} 
+                        py={5} 
+                        fontSize="sm" 
+                        fontWeight="bold" 
+                        color="purple.700"
+                        textTransform="uppercase"
+                        letterSpacing="wide"
+                        textAlign="center"
+                      >
+                        Actions
+                      </Th>
                     </Tr>
                   </Thead>
                   <Tbody>
                     {users.map((user) => (
-                      <Tr key={user.id} _hover={{ bg: useColorModeValue('gray.50', 'gray.700') }}>
-                        <Td px={6} py={4}>
-                          <HStack spacing={3}>
-                            <Avatar 
-                              size="sm" 
-                              name={`${user.first_name} ${user.last_name}`}
-                              bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
-                              color="white"
-                            />
-                            <VStack align="start" spacing={0}>
-                              <Text fontWeight="semibold" color={textColor}>
+                      <Tr 
+                        key={user.id} 
+                        _hover={{ 
+                          bg: useColorModeValue('purple.50', 'purple.900'),
+                          shadow: 'md',
+                          transform: 'translateY(-2px)'
+                        }}
+                        cursor="pointer"
+                        onClick={() => navigate(`/users/${user.id}`)}
+                        transition="all 0.3s"
+                        _active={{ transform: 'scale(0.98)' }}
+                        position="relative"
+                        borderBottom="1px solid"
+                        borderColor="purple.100"
+                      >
+                        <Td px={6} py={5}>
+                          <HStack spacing={4}>
+                            <Box position="relative">
+                              <Avatar 
+                                size="md" 
+                                name={`${user.first_name} ${user.last_name}`}
+                                bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)"
+                                color="white"
+                                border="3px solid"
+                                borderColor="purple.200"
+                                shadow="md"
+                              />
+                              <Box
+                                position="absolute"
+                                bottom="-2px"
+                                right="-2px"
+                                w="4"
+                                h="4"
+                                bg="green.400"
+                                borderRadius="full"
+                                border="2px solid white"
+                              />
+                            </Box>
+                            <VStack align="start" spacing={1}>
+                              <Text fontWeight="bold" color={textColor} fontSize="md">
                                 {user.first_name} {user.last_name}
                               </Text>
-                              <Text fontSize="sm" color="gray.500">
+                              <Badge 
+                                colorScheme="purple" 
+                                variant="subtle" 
+                                fontSize="xs"
+                                px={2}
+                                py={1}
+                                borderRadius="md"
+                              >
                                 ID: {user.id}
-                              </Text>
+                              </Badge>
                             </VStack>
                           </HStack>
                         </Td>
-                        <Td px={6} py={4}>
-                          <VStack align="start" spacing={1}>
-                            <HStack spacing={2}>
-                              <Icon as={Mail} boxSize={3} color="gray.400" />
-                              <Text fontSize="sm">{user.email}</Text>
+                        <Td px={6} py={5}>
+                          <VStack align="start" spacing={2}>
+                            <HStack spacing={3}>
+                              <Box
+                                bg="blue.100"
+                                p={1}
+                                borderRadius="md"
+                              >
+                                <Icon as={Mail} boxSize={3} color="blue.600" />
+                              </Box>
+                              <Text fontSize="sm" fontWeight="medium" color={textColor}>
+                                {user.email}
+                              </Text>
                             </HStack>
-                            <HStack spacing={2}>
-                              <Icon as={Phone} boxSize={3} color="gray.400" />
-                              <Text fontSize="sm">
-                                {user.phone || user.phone_number || user.mobile || user.mobile_number || 'No phone'}
+                            <HStack spacing={3}>
+                              <Box
+                                bg="green.100"
+                                p={1}
+                                borderRadius="md"
+                              >
+                                <Icon as={Phone} boxSize={3} color="green.600" />
+                              </Box>
+                              <Text fontSize="sm" fontWeight="medium" color={textColor}>
+                                {user.phone}
                               </Text>
                             </HStack>
                           </VStack>
                         </Td>
-                        <Td px={6} py={4}>
-                          <HStack spacing={2}>
-                            <Icon as={Calendar} boxSize={4} color="gray.400" />
-                            <Text fontSize="sm">{user.age} years</Text>
+                        <Td px={6} py={5}>
+                          <HStack spacing={3}>
+                            <Box
+                              bg="orange.100"
+                              p={2}
+                              borderRadius="lg"
+                            >
+                              <Icon as={Calendar} boxSize={4} color="orange.600" />
+                            </Box>
+                            <VStack align="start" spacing={0}>
+                              <Text fontSize="md" fontWeight="bold" color={textColor}>
+                                {user.age}
+                              </Text>
+                              <Text fontSize="xs" color="gray.500">
+                                years old
+                              </Text>
+                            </VStack>
                           </HStack>
                         </Td>
-                        <Td px={6} py={4}>
-                          <Badge 
-                            colorScheme={user.is_active ? 'green' : 'red'} 
-                            variant="subtle"
-                            borderRadius="full"
-                            px={3}
-                            py={1}
-                          >
-                            {user.is_active ? 'Active' : 'Inactive'}
-                          </Badge>
+                        <Td px={6} py={5}>
+                          <VStack align="start" spacing={1}>
+                            <Text fontSize="sm" fontWeight="semibold" color={textColor}>
+                              {new Date(user.created_at).toLocaleDateString()}
+                            </Text>
+                            <Text fontSize="xs" color="gray.500">
+                              {new Date(user.created_at).toLocaleTimeString([], {
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
+                            </Text>
+                          </VStack>
                         </Td>
-                        <Td px={6} py={4}>
-                          <Text fontSize="sm" color="gray.600">
-                            {new Date(user.created_at).toLocaleDateString()}
-                          </Text>
-                        </Td>
-                        <Td px={6} py={4}>
-                          <HStack justify="center" spacing={2}>
-                            <Tooltip label="View Details">
+                        <Td px={6} py={5}>
+                          <HStack justify="center" spacing={1}>
+                            <Tooltip label="View Details" hasArrow>
                               <IconButton
                                 aria-label="View user"
                                 icon={<Eye size={16} />}
                                 size="sm"
-                                variant="ghost"
-                                color="blue.500"
-                                _hover={{ bg: 'blue.50' }}
-                                onClick={() => navigate(`/users/${user.id}`)}
+                                variant="solid"
+                                colorScheme="blue"
+                                borderRadius="lg"
+                                _hover={{ transform: 'scale(1.05)' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  navigate(`/users/${user.id}`);
+                                }}
                               />
                             </Tooltip>
-                            <Tooltip label="Edit User">
+                            <Tooltip label="Edit User" hasArrow>
                               <IconButton
                                 aria-label="Edit user"
                                 icon={<Edit size={16} />}
                                 size="sm"
-                                variant="ghost"
-                                color="gray.500"
-                                _hover={{ bg: 'gray.50' }}
+                                variant="solid"
+                                colorScheme="green"
+                                borderRadius="lg"
+                                _hover={{ transform: 'scale(1.05)' }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  // TODO: Implement edit functionality
+                                }}
                               />
                             </Tooltip>
                             <Menu>
@@ -413,15 +712,34 @@ export default function Users() {
                                 aria-label="More options"
                                 icon={<MoreVertical size={16} />}
                                 size="sm"
-                                variant="ghost"
-                                color="gray.500"
-                                _hover={{ bg: 'gray.50' }}
+                                variant="solid"
+                                colorScheme="purple"
+                                borderRadius="lg"
+                                _hover={{ transform: 'scale(1.05)' }}
+                                onClick={(e) => e.stopPropagation()}
                               />
-                              <MenuList>
-                                <MenuItem icon={<Download size={16} />}>
+                              <MenuList 
+                                onClick={(e) => e.stopPropagation()}
+                                borderRadius="xl"
+                                border="1px solid"
+                                borderColor="purple.200"
+                                shadow="xl"
+                              >
+                                <MenuItem 
+                                  icon={<Download size={16} />}
+                                  onClick={(e) => e.stopPropagation()}
+                                  borderRadius="lg"
+                                  _hover={{ bg: 'blue.50' }}
+                                >
                                   Export Data
                                 </MenuItem>
-                                <MenuItem icon={<Trash2 size={16} />} color="red.500">
+                                <MenuItem 
+                                  icon={<Trash2 size={16} />} 
+                                  color="red.500"
+                                  onClick={(e) => e.stopPropagation()}
+                                  borderRadius="lg"
+                                  _hover={{ bg: 'red.50' }}
+                                >
                                   Delete User
                                 </MenuItem>
                               </MenuList>
@@ -436,150 +754,250 @@ export default function Users() {
             </>
           )}
         </MotionCard>
-        {/* Results Summary */}
+        {/* Enhanced Results Summary */}
         {totalCount > 0 && (
           <MotionBox
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.2 }}
-            mt={6}
+            transition={{ duration: 0.5, delay: 0.3 }}
+            mt={8}
             display="flex"
-            justifyContent="center"
-            mb={4}
+            justifyContent="space-between"
+            alignItems="center"
+            mb={6}
           >
-            <Text color="gray.600" fontSize="sm">
-              Showing {startItem} to {endItem} of {totalCount} users
-            </Text>
+            <Box
+              bg={cardBg}
+              px={6}
+              py={3}
+              borderRadius="xl"
+              border="1px solid"
+              borderColor="purple.200"
+              shadow="sm"
+            >
+              <HStack spacing={4}>
+                <Text color="purple.600" fontSize="sm" fontWeight="semibold">
+                  Showing {startItem} to {endItem} of {totalCount} users
+                </Text>
+                <Badge colorScheme="purple" variant="subtle" borderRadius="full">
+                  Page {currentPage} of {totalPages}
+                </Badge>
+              </HStack>
+            </Box>
+            
+            {/* Page Size Info */}
+            <Box
+              bg={cardBg}
+              px={4}
+              py={2}
+              borderRadius="lg"
+              border="1px solid"
+              borderColor="purple.100"
+              shadow="sm"
+            >
+              <Text color="gray.600" fontSize="xs" fontWeight="medium">
+                {pageSize} users per page
+              </Text>
+            </Box>
           </MotionBox>
         )}
 
-        {/* Modern Purple Pagination */}
-        {totalCount > 0 && totalPages > 1 && (
+        {/* Enhanced Modern Purple Pagination */}
+        {totalCount > 0 && (
           <MotionBox
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.3 }}
-            mt={2}
+            transition={{ duration: 0.5, delay: 0.4 }}
+            mt={4}
             display="flex"
             justifyContent="center"
           >
-            <HStack 
-              spacing={3} 
-              bg="purple.500" 
-              p={4} 
-              borderRadius="full" 
-              shadow="xl"
-              position="relative"
-              overflow="hidden"
-              _before={{
-                content: '""',
-                position: 'absolute',
-                top: '-50%',
-                left: '-20%',
-                width: '140%',
-                height: '200%',
-                background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.1) 0%, rgba(168, 85, 247, 0.05) 100%)',
-                borderRadius: '50%',
-                zIndex: 0
-              }}
+            <Box
+              bg="white"
+              p={2}
+              borderRadius="2xl"
+              shadow="2xl"
+              border="1px solid"
+              borderColor="purple.200"
             >
-              {/* Previous Button */}
-              <IconButton
-                aria-label="Previous page"
-                icon={<ChevronLeft size={18} />}
-                size="md"
-                variant="ghost"
-                onClick={() => handlePageChange(currentPage - 1)}
-                isDisabled={currentPage === 1 || isPageChanging}
-                borderRadius="full"
-                bg="white"
-                color="purple.600"
-                border="1px solid"
-                borderColor="purple.200"
-                _hover={{ bg: 'purple.50' }}
-                _disabled={{ opacity: 0.5, cursor: 'not-allowed' }}
-                zIndex={1}
+              <HStack 
+                spacing={2} 
+                bg="linear-gradient(135deg, #667eea 0%, #764ba2 100%)" 
+                p={3} 
+                borderRadius="xl" 
                 position="relative"
-              />
+                overflow="hidden"
+                _before={{
+                  content: '""',
+                  position: 'absolute',
+                  top: '-50%',
+                  left: '-20%',
+                  width: '140%',
+                  height: '200%',
+                  background: 'radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%)',
+                  borderRadius: '50%',
+                  zIndex: 0
+                }}
+              >
+                {/* Previous Button */}
+                <IconButton
+                  aria-label="Previous page"
+                  icon={<ChevronLeft size={16} />}
+                  size="sm"
+                  variant="solid"
+                  onClick={() => handlePageChange(currentPage - 1)}
+                  isDisabled={currentPage === 1 || isPageChanging}
+                  borderRadius="lg"
+                  bg="white"
+                  color="purple.600"
+                  border="2px solid"
+                  borderColor="purple.200"
+                  _hover={{ 
+                    bg: 'purple.50',
+                    transform: 'scale(1.05)',
+                    borderColor: 'purple.300'
+                  }}
+                  _disabled={{ 
+                    opacity: 0.4, 
+                    cursor: 'not-allowed',
+                    transform: 'none'
+                  }}
+                  zIndex={1}
+                  position="relative"
+                  shadow="sm"
+                />
 
-              {/* Page Numbers */}
-{/* Page Numbers */}
-              {totalPages > 0 && Array.from({ length: totalPages }, (_, i) => i + 1)
-                .filter(pageNum => {
-                  // Only show 5 pages at most, centered around the current page
-                  const maxVisiblePages = 5;
-                  const halfVisible = Math.floor(maxVisiblePages / 2);
+              {/* Page Numbers with Smart Display */}
+              {totalPages > 0 && (() => {
+                const maxVisiblePages = 7;
+                const halfVisible = Math.floor(maxVisiblePages / 2);
+                let startPage = 1;
+                let endPage = totalPages;
+                let showStartEllipsis = false;
+                let showEndEllipsis = false;
 
-                  if (totalPages <= maxVisiblePages) {
-                    return true; // Show all pages if total pages are 5 or less
+                if (totalPages > maxVisiblePages) {
+                  if (currentPage <= halfVisible + 1) {
+                    endPage = maxVisiblePages - 1;
+                    showEndEllipsis = true;
+                  } else if (currentPage >= totalPages - halfVisible) {
+                    startPage = totalPages - maxVisiblePages + 2;
+                    showStartEllipsis = true;
+                  } else {
+                    startPage = currentPage - halfVisible + 1;
+                    endPage = currentPage + halfVisible - 1;
+                    showStartEllipsis = true;
+                    showEndEllipsis = true;
+                  }
+                }
+
+                const pageNumbers = [];
+
+                // Always show first page
+                if (showStartEllipsis) {
+                  pageNumbers.push(1);
+                  if (startPage > 2) {
+                    pageNumbers.push('start-ellipsis');
+                  }
+                }
+
+                // Show visible pages
+                for (let i = startPage; i <= endPage; i++) {
+                  pageNumbers.push(i);
+                }
+
+                // Always show last page
+                if (showEndEllipsis) {
+                  if (endPage < totalPages - 1) {
+                    pageNumbers.push('end-ellipsis');
+                  }
+                  pageNumbers.push(totalPages);
+                }
+
+                return pageNumbers.map((pageNum, _index) => {
+                  if (pageNum === 'start-ellipsis' || pageNum === 'end-ellipsis') {
+                    return (
+                      <Text
+                        key={pageNum}
+                        color="white"
+                        fontSize="sm"
+                        fontWeight="bold"
+                        px={2}
+                        opacity={0.7}
+                      >
+                        ...
+                      </Text>
+                    );
                   }
 
-                  if (currentPage <= halfVisible) {
-                    return pageNum <= maxVisiblePages; // Show first 5 pages
-                  }
-
-                  if (currentPage >= totalPages - halfVisible) {
-                    return pageNum > totalPages - maxVisiblePages; // Show last 5 pages
-                  }
-
-                  // Show pages centered around current page
-                  return pageNum >= currentPage - halfVisible && pageNum <= currentPage + halfVisible;
-                })
-                .map((pageNum) => {
                   const isActive = currentPage === pageNum;
-
                   return (
                     <Button
                       key={pageNum}
-                      size="md"
-                      variant={isActive ? "solid" : "ghost"}
-                      bg={isActive ? "purple.100" : "white"}
+                      size="sm"
+                      variant="solid"
+                      bg={isActive ? "white" : "rgba(255,255,255,0.8)"}
                       color={isActive ? "purple.700" : "purple.600"}
-                      border={isActive ? "2px solid" : "1px solid"}
-                      borderColor={isActive ? "purple.300" : "purple.200"}
-                      onClick={() => handlePageChange(pageNum)}
+                      border="2px solid"
+                      borderColor={isActive ? "purple.400" : "purple.200"}
+                      onClick={() => handlePageChange(pageNum as number)}
                       isDisabled={isPageChanging}
-                      borderRadius="full"
-                      minW="44px"
-                      h="44px"
+                      borderRadius="lg"
+                      minW="36px"
+                      h="36px"
                       fontSize="sm"
-                      fontWeight="semibold"
+                      fontWeight="bold"
                       _hover={{ 
-                        bg: isActive ? "purple.200" : "purple.50",
-                        transform: "scale(1.05)"
+                        bg: "white",
+                        transform: "scale(1.1)",
+                        borderColor: "purple.400",
+                        shadow: "md"
                       }}
                       _active={{ transform: "scale(0.95)" }}
                       transition="all 0.2s"
                       zIndex={1}
                       position="relative"
+                      shadow={isActive ? "md" : "sm"}
                     >
                       {pageNum}
                     </Button>
                   );
-                })}
+                });
+              })()}
 
-              {/* Next Button */}
-              <IconButton
-                aria-label="Next page"
-                icon={<ChevronRight size={18} />}
-                size="md"
-                variant="ghost"
-                onClick={() => handlePageChange(currentPage + 1)}
-                isDisabled={currentPage === totalPages || isPageChanging}
-                borderRadius="full"
-                bg="white"
-                color="purple.600"
-                border="1px solid"
-                borderColor="purple.200"
-                _hover={{ bg: 'purple.50' }}
-                _disabled={{ opacity: 0.5, cursor: 'not-allowed' }}
-                zIndex={1}
-                position="relative"
-              />
-            </HStack>
+                {/* Next Button */}
+                <IconButton
+                  aria-label="Next page"
+                  icon={<ChevronRight size={16} />}
+                  size="sm"
+                  variant="solid"
+                  onClick={() => handlePageChange(currentPage + 1)}
+                  isDisabled={currentPage === totalPages || isPageChanging}
+                  borderRadius="lg"
+                  bg="white"
+                  color="purple.600"
+                  border="2px solid"
+                  borderColor="purple.200"
+                  _hover={{ 
+                    bg: 'purple.50',
+                    transform: 'scale(1.05)',
+                    borderColor: 'purple.300'
+                  }}
+                  _disabled={{ 
+                    opacity: 0.4, 
+                    cursor: 'not-allowed',
+                    transform: 'none'
+                  }}
+                  zIndex={1}
+                  position="relative"
+                  shadow="sm"
+                />
+              </HStack>
+            </Box>
           </MotionBox>
         )}
       </Container>
     </Box>
   );
-} 
+}
+

@@ -8,7 +8,6 @@ import {
   Avatar,
   Badge,
   Button,
-  Input,
   IconButton,
   Table,
   Thead,
@@ -17,7 +16,6 @@ import {
   Th,
   Td,
   TableContainer,
-  Select,
   Grid,
   Stat,
   StatLabel,
@@ -34,14 +32,15 @@ import {
   DrawerContent,
   DrawerCloseButton,
   useDisclosure,
-  FormControl,
-  FormLabel,
-  Textarea,
-  Switch
+  useToast,
+  Alert,
+  AlertIcon,
+  AlertTitle,
+  AlertDescription,
+  Skeleton,
+  SkeletonText,
 } from '@chakra-ui/react';
 import { 
-  Search, 
-  Plus, 
   MoreVertical,
   Download,
   Eye,
@@ -49,132 +48,149 @@ import {
   Trash2,
   CheckCircle,
   AlertCircle,
+  RefreshCw,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
+import { motion } from 'framer-motion';
+import { claimsAPI, type Claim, type ClaimsParams } from '../../api/getClaims';
 
-interface Claim {
-  id: string;
-  claimNumber: string;
-  customerName: string;
-  customerEmail: string;
-  amount: number;
-  status: 'pending' | 'approved' | 'rejected' | 'processing';
-  priority: 'low' | 'medium' | 'high' | 'urgent';
-  type: 'auto' | 'home' | 'health' | 'life';
-  submittedDate: string;
-  assignedTo: string;
-  description: string;
-  documents: number;
-}
+// Motion components
+const MotionBox = motion(Box);
+const MotionCard = motion(Card);
 
 export default function Claims() {
-  const navigate = useNavigate();
   const { isOpen, onOpen, onClose } = useDisclosure();
+  const toast = useToast();
+  
+  // State management
+  const [claims, setClaims] = useState<Claim[]>([]);
   const [selectedClaim, setSelectedClaim] = useState<Claim | null>(null);
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [priorityFilter, setPriorityFilter] = useState('all');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const [pageSize] = useState(10);
+  
+  // Filters
+  const [searchQuery] = useState('');
+  const [statusFilter ] = useState('all');
+  const [priorityFilter] = useState('all');
+  const [typeFilter] = useState('all');
 
-  const claims: Claim[] = [
-    {
-      id: '1',
-      claimNumber: 'CLM-2024-001',
-      customerName: 'John Smith',
-      customerEmail: 'john.smith@email.com',
-      amount: 2500,
-      status: 'pending',
-      priority: 'high',
-      type: 'auto',
-      submittedDate: '2024-01-15',
-      assignedTo: 'Sarah Wilson',
-      description: 'Vehicle damage from collision on highway',
-      documents: 3
-    },
-    {
-      id: '2',
-      claimNumber: 'CLM-2024-002',
-      customerName: 'Maria Garcia',
-      customerEmail: 'maria.garcia@email.com',
-      amount: 15000,
-      status: 'approved',
-      priority: 'urgent',
-      type: 'home',
-      submittedDate: '2024-01-14',
-      assignedTo: 'Mike Johnson',
-      description: 'Water damage from burst pipe',
-      documents: 5
-    },
-    {
-      id: '3',
-      claimNumber: 'CLM-2024-003',
-      customerName: 'David Chen',
-      customerEmail: 'david.chen@email.com',
-      amount: 800,
-      status: 'processing',
-      priority: 'medium',
-      type: 'health',
-      submittedDate: '2024-01-13',
-      assignedTo: 'Lisa Brown',
-      description: 'Medical expenses for emergency visit',
-      documents: 2
-    },
-    {
-      id: '4',
-      claimNumber: 'CLM-2024-004',
-      customerName: 'Emily Davis',
-      customerEmail: 'emily.davis@email.com',
-      amount: 50000,
-      status: 'rejected',
-      priority: 'low',
-      type: 'life',
-      submittedDate: '2024-01-12',
-      assignedTo: 'Tom Wilson',
-      description: 'Life insurance claim for policyholder',
-      documents: 8
-    },
-    {
-      id: '5',
-      claimNumber: 'CLM-2024-005',
-      customerName: 'Robert Johnson',
-      customerEmail: 'robert.johnson@email.com',
-      amount: 3200,
-      status: 'pending',
-      priority: 'high',
-      type: 'auto',
-      submittedDate: '2024-01-11',
-      assignedTo: 'Sarah Wilson',
-      description: 'Windshield replacement due to hail damage',
-      documents: 4
+  // Fetch claims function
+  const fetchClaims = async (showLoading = true) => {
+    try {
+      if (showLoading) setLoading(true);
+      setError(null);
+
+      const params: ClaimsParams = {
+        page: currentPage,
+        page_size: pageSize,
+        ordering: '-created_at', // Order by newest first
+      };
+
+      // Add filters
+      if (searchQuery.trim()) {
+        params.search = searchQuery.trim();
+      }
+      if (statusFilter !== 'all') {
+        params.status = statusFilter;
+      }
+      if (priorityFilter !== 'all') {
+        params.priority = priorityFilter;
+      }
+      if (typeFilter !== 'all') {
+        params.type = typeFilter;
+      }
+
+      console.log('Fetching claims with params:', params);
+      
+      const response = await claimsAPI.getClaims(params);
+      
+      // Handle response structure
+      const claimsData = response.results || [];
+      const totalCount = response.count || claimsData.length || 0;
+      
+      setClaims(claimsData);
+      setTotalCount(totalCount);
+      
+      console.log('Claims fetched successfully:', response);
+      console.log('Claims data:', claimsData);
+      console.log('First claim structure:', claimsData[0]);
+      
+    } catch (err: any) {
+      console.error('Error fetching claims:', err);
+      
+      let errorMessage = 'Failed to fetch claims. Please try again.';
+      if (err.response?.status === 401) {
+        errorMessage = 'Authentication failed. Please log in again.';
+      } else if (err.response?.status === 403) {
+        errorMessage = 'You do not have permission to view claims.';
+      } else if (err.response?.data?.message) {
+        errorMessage = err.response.data.message;
+      } else if (err.message) {
+        errorMessage = err.message;
+      }
+      
+      setError(errorMessage);
+      
+      toast({
+        title: 'Error',
+        description: errorMessage,
+        status: 'error',
+        duration: 5000,
+        isClosable: true,
+      });
+    } finally {
+      setLoading(false);
     }
-  ];
+  };
 
-  const filteredClaims = claims.filter(claim => {
-    if (statusFilter !== 'all' && claim.status !== statusFilter) return false;
-    if (priorityFilter !== 'all' && claim.priority !== priorityFilter) return false;
-    return true;
-  });
+  // Initial load
+  useEffect(() => {
+    fetchClaims();
+  }, [currentPage]);
 
-  const stats = [
-    { label: 'Total Claims', value: claims.length, color: 'blue.500' },
-    { label: 'Pending', value: claims.filter(c => c.status === 'pending').length, color: 'orange.500' },
-    { label: 'Approved', value: claims.filter(c => c.status === 'approved').length, color: 'green.500' },
-    { label: 'Processing', value: claims.filter(c => c.status === 'processing').length, color: 'purple.500' },
-  ];
+  // Debounced search
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      if (currentPage === 1) {
+        fetchClaims();
+      } else {
+        setCurrentPage(1);
+      }
+    }, 500);
 
-  const totalAmount = claims.reduce((sum, claim) => sum + claim.amount, 0);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery, statusFilter, priorityFilter, typeFilter]);
 
+  // Computed stats with safety checks
+  const stats = useMemo(() => [
+    { label: 'Total Claims', value: totalCount, color: 'blue.500' },
+    { label: 'Draft', value: claims?.filter(c => c.status === 'draft')?.length || 0, color: 'orange.500' },
+    { label: 'Active', value: claims?.filter(c => c.status === 'active')?.length || 0, color: 'green.500' },
+    { label: 'Completed', value: claims?.filter(c => c.status === 'completed')?.length || 0, color: 'purple.500' },
+  ], [claims, totalCount]);
+
+  const totalAmount = useMemo(() => 
+    claims?.reduce((sum, claim) => sum + (claim.amount || 0), 0) || 0, 
+    [claims]
+  );
+
+  // Helper functions
   const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'pending': return 'orange';
-      case 'approved': return 'green';
-      case 'rejected': return 'red';
-      case 'processing': return 'purple';
+    switch (status?.toLowerCase()) {
+      case 'draft': return 'orange';
+      case 'active': return 'green';
+      case 'pending': return 'yellow';
+      case 'completed': return 'purple';
+      case 'cancelled': return 'red';
       default: return 'gray';
     }
   };
 
   const getPriorityColor = (priority: string) => {
-    switch (priority) {
+    switch (priority?.toLowerCase()) {
       case 'urgent': return 'red';
       case 'high': return 'orange';
       case 'medium': return 'yellow';
@@ -183,13 +199,69 @@ export default function Claims() {
     }
   };
 
-  const handleClaimClick = (claim: Claim) => {
-    setSelectedClaim(claim);
-    onOpen();
+  const handleClaimClick = async (claim: Claim) => {
+    try {
+      // Fetch detailed claim data
+      const detailedClaim = await claimsAPI.getClaim(claim.id);
+      setSelectedClaim(detailedClaim);
+      onOpen();
+    } catch (err) {
+      console.error('Error fetching claim details:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to load claim details',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
   };
 
+  const handleStatusUpdate = async (claimId: string, newStatus: string) => {
+    try {
+      await claimsAPI.updateClaimStatus(claimId, newStatus);
+      
+      toast({
+        title: 'Success',
+        description: `Claim status updated to ${newStatus}`,
+        status: 'success',
+        duration: 3000,
+        isClosable: true,
+      });
+      
+      // Refresh claims list
+      fetchClaims(false);
+      
+      // Update selected claim if it's the same one
+      if (selectedClaim && selectedClaim.id === claimId) {
+        setSelectedClaim({ ...selectedClaim, status: newStatus as any });
+      }
+      
+    } catch (err) {
+      console.error('Error updating claim status:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to update claim status',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  const handleRefresh = () => {
+    fetchClaims();
+  };
+
+
+
   return (
-    <Box p={6}>
+    <MotionBox
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+      p={6}
+    >
       <VStack spacing={6} align="stretch">
         {/* Header */}
         <Box>
@@ -203,103 +275,55 @@ export default function Claims() {
               </Text>
             </VStack>
             
-            <Button
-              leftIcon={<Plus size={16} />}
-              colorScheme="blue"
-              size="sm"
-            >
-              New Claim
-            </Button>
+            <HStack spacing={3}>
+              <Button
+                leftIcon={<RefreshCw size={16} />}
+                variant="outline"
+                size="sm"
+                onClick={handleRefresh}
+                isLoading={loading}
+              >
+                Refresh
+              </Button>
+            </HStack>
           </HStack>
 
           {/* Stats Grid */}
           <Grid templateColumns="repeat(auto-fit, minmax(200px, 1fr))" gap={4} mb={6}>
             {stats.map((stat, index) => (
-              <Card key={index}>
+              <MotionCard
+                key={index}
+                whileHover={{ scale: 1.02 }}
+                transition={{ duration: 0.2 }}
+              >
                 <CardBody>
                   <Stat>
                     <StatLabel color="gray.600">{stat.label}</StatLabel>
-                    <StatNumber color={stat.color}>{stat.value}</StatNumber>
+                    <StatNumber color={stat.color}>
+                      {loading ? <Skeleton height="32px" /> : stat.value}
+                    </StatNumber>
                     <StatHelpText>
-                      {stat.label === 'Total Claims' && `$${totalAmount.toLocaleString()} total value`}
+                      {stat.label === 'Total Claims' && totalAmount > 0 && 
+                        `$${totalAmount.toLocaleString()} total value`
+                      }
                     </StatHelpText>
                   </Stat>
                 </CardBody>
-              </Card>
+              </MotionCard>
             ))}
           </Grid>
         </Box>
 
-        {/* Filters and Search */}
-        <Card>
-          <CardBody>
-            <HStack spacing={4} wrap="wrap">
-              {/* Search */}
-              <Box position="relative" minW="300px">
-                <Input
-                  placeholder="Search claims..."
-                  bg="white"
-                  border="1px solid"
-                  borderColor="gray.300"
-                  borderRadius="lg"
-                  pl={10}
-                  pr={4}
-                  py={2}
-                  fontSize="sm"
-                  _focus={{
-                    borderColor: 'blue.500',
-                    boxShadow: '0 0 0 1px var(--chakra-colors-blue-500)',
-                  }}
-                />
-                <Box
-                  position="absolute"
-                  left={3}
-                  top="50%"
-                  transform="translateY(-50%)"
-                  color="gray.400"
-                >
-                  <Search size={16} />
-                </Box>
-              </Box>
-
-              {/* Status Filter */}
-              <Select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-                size="sm"
-                minW="150px"
-              >
-                <option value="all">All Status</option>
-                <option value="pending">Pending</option>
-                <option value="processing">Processing</option>
-                <option value="approved">Approved</option>
-                <option value="rejected">Rejected</option>
-              </Select>
-
-              {/* Priority Filter */}
-              <Select
-                value={priorityFilter}
-                onChange={(e) => setPriorityFilter(e.target.value)}
-                size="sm"
-                minW="150px"
-              >
-                <option value="all">All Priority</option>
-                <option value="urgent">Urgent</option>
-                <option value="high">High</option>
-                <option value="medium">Medium</option>
-                <option value="low">Low</option>
-              </Select>
-
-              <Button
-                leftIcon={<Download size={16} />}
-                variant="outline"
-                size="sm"
-              >
-                Export
-              </Button>
-            </HStack>
-          </CardBody>
-        </Card>
+        {/* Error Alert */}
+        {error && (
+          <Alert status="error" borderRadius="lg">
+            <AlertIcon />
+            <Box>
+              <AlertTitle>Error loading claims!</AlertTitle>
+              <AlertDescription>{error}</AlertDescription>
+            </Box>
+          </Alert>
+        )}
 
         {/* Claims Table */}
         <Card>
@@ -308,102 +332,115 @@ export default function Claims() {
               <Thead>
                 <Tr>
                   <Th>Claim Number</Th>
-                  <Th>Customer</Th>
-                  <Th>Amount</Th>
+                  <Th>Lender</Th>
                   <Th>Status</Th>
-                  <Th>Priority</Th>
-                  <Th>Type</Th>
-                  <Th>Assigned To</Th>
                   <Th>Submitted</Th>
                   <Th></Th>
                 </Tr>
               </Thead>
               <Tbody>
-                {filteredClaims.map((claim) => (
-                  <Tr 
-                    key={claim.id} 
-                    _hover={{ bg: 'blue.50' }} 
-                    cursor="pointer"
-                    onClick={() => handleClaimClick(claim)}
-                  >
-                    <Td>
-                      <Text fontSize="sm" fontWeight="medium" color="blue.600">
-                        {claim.claimNumber}
-                      </Text>
-                    </Td>
-                    <Td>
-                      <VStack spacing={0} align="start">
-                        <Text fontSize="sm" fontWeight="medium">
-                          {claim.customerName}
-                        </Text>
-                        <Text fontSize="xs" color="gray.500">
-                          {claim.customerEmail}
+                {loading ? (
+                  // Loading skeleton rows
+                  Array.from({ length: 5 }).map((_, index) => (
+                    <Tr key={index}>
+                      <Td><Skeleton height="16px" /></Td>
+                      <Td><SkeletonText noOfLines={2} /></Td>
+                      <Td><Skeleton height="16px" /></Td>
+                      <Td><Skeleton height="20px" width="80px" /></Td>
+                      <Td><Skeleton height="20px" width="60px" /></Td>
+                      <Td><Skeleton height="20px" width="60px" /></Td>
+                      <Td><SkeletonText noOfLines={1} /></Td>
+                      <Td><Skeleton height="16px" /></Td>
+                      <Td><Skeleton height="20px" width="20px" /></Td>
+                    </Tr>
+                  ))
+                ) : claims?.length === 0 ? (
+                  <Tr>
+                    <Td colSpan={9} textAlign="center" py={8}>
+                      <VStack spacing={3}>
+                        <Text color="gray.500">No claims found</Text>
+                        <Text fontSize="sm" color="gray.400">
+                          {searchQuery || statusFilter !== 'all' || priorityFilter !== 'all' || typeFilter !== 'all'
+                            ? 'Try adjusting your filters'
+                            : 'Create your first claim to get started'
+                          }
                         </Text>
                       </VStack>
                     </Td>
-                    <Td>
-                      <Text fontSize="sm" fontWeight="medium" color="green.600">
-                        ${claim.amount.toLocaleString()}
-                      </Text>
-                    </Td>
-                    <Td>
-                      <Badge
-                        size="sm"
-                        colorScheme={getStatusColor(claim.status)}
-                        variant="subtle"
-                      >
-                        {claim.status.charAt(0).toUpperCase() + claim.status.slice(1)}
-                      </Badge>
-                    </Td>
-                    <Td>
-                      <Badge
-                        size="sm"
-                        colorScheme={getPriorityColor(claim.priority)}
-                        variant="subtle"
-                      >
-                        {claim.priority.charAt(0).toUpperCase() + claim.priority.slice(1)}
-                      </Badge>
-                    </Td>
-                    <Td>
-                      <Badge
-                        size="sm"
-                        colorScheme="blue"
-                        variant="subtle"
-                      >
-                        {claim.type.charAt(0).toUpperCase() + claim.type.slice(1)}
-                      </Badge>
-                    </Td>
-                    <Td>
-                      <HStack spacing={2}>
-                        <Avatar size="xs" name={claim.assignedTo} src="" />
-                        <Text fontSize="sm">{claim.assignedTo}</Text>
-                      </HStack>
-                    </Td>
-                    <Td>
-                      <Text fontSize="sm" color="gray.600">
-                        {new Date(claim.submittedDate).toLocaleDateString()}
-                      </Text>
-                    </Td>
-                    <Td>
-                      <Menu>
-                        <MenuButton
-                          as={IconButton}
-                          aria-label="More options"
-                          icon={<MoreVertical size={14} />}
-                          variant="ghost"
-                          size="sm"
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <MenuList>
-                          <MenuItem icon={<Eye size={14} />}>View Details</MenuItem>
-                          <MenuItem icon={<Edit size={14} />}>Edit Claim</MenuItem>
-                          <MenuItem icon={<Download size={14} />}>Download</MenuItem>
-                          <MenuItem icon={<Trash2 size={14} />} color="red.500">Delete</MenuItem>
-                        </MenuList>
-                      </Menu>
-                    </Td>
                   </Tr>
-                ))}
+                ) : (
+                  claims?.map((claim) => (
+                    <MotionBox
+                      key={claim.id}
+                      as={Tr}
+                      whileHover={{ backgroundColor: 'var(--chakra-colors-blue-50)' }}
+                      cursor="pointer"
+                      onClick={() => handleClaimClick(claim)}
+                      transition={{ duration: 0.2 }}
+                    >
+                      <Td>
+                        <Text fontSize="sm" fontWeight="medium" color="blue.600">
+                          {claim.claim_number || claim.id?.slice(0, 8) || 'N/A'}
+                        </Text>
+                      </Td>
+                      <Td>
+                        <VStack spacing={0} align="start">
+                          <Text fontSize="sm" fontWeight="medium">
+                            {claim.customer_name || claim.lender_name || 'Unknown Customer'}
+                          </Text>
+                          <Text fontSize="xs" color="gray.500">
+                            {claim.customer_email || 'No email'}
+                          </Text>
+                        </VStack>
+                      </Td>
+                    <Td>
+                        <Badge
+                            size="sm"
+                            colorScheme={getStatusColor(claim.status)}
+                            variant="subtle"
+                        >
+                            {claim.status
+                                ? claim.status.charAt(0).toUpperCase() + claim.status.slice(1)
+                                : 'Unknown'}
+                        </Badge>
+                    </Td>
+                      <Td>
+                        <Text fontSize="sm" color="gray.600">
+                          {claim.submitted_date ? 
+                            new Date(claim.submitted_date).toLocaleDateString() :
+                            new Date(claim.created_at).toLocaleDateString()
+                          }
+                        </Text>
+                      </Td>
+                      <Td>
+                        <Menu>
+                          <MenuButton
+                            as={IconButton}
+                            aria-label="More options"
+                            icon={<MoreVertical size={14} />}
+                            variant="ghost"
+                            size="sm"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          <MenuList>
+                            <MenuItem 
+                              icon={<Eye size={14} />}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleClaimClick(claim);
+                              }}
+                            >
+                              View Details
+                            </MenuItem>
+                            <MenuItem icon={<Edit size={14} />}>Edit Claim</MenuItem>
+                            <MenuItem icon={<Download size={14} />}>Download</MenuItem>
+                            <MenuItem icon={<Trash2 size={14} />} color="red.500">Delete</MenuItem>
+                          </MenuList>
+                        </Menu>
+                      </Td>
+                    </MotionBox>
+                  )) || []
+                )}
               </Tbody>
             </Table>
           </TableContainer>
@@ -426,10 +463,10 @@ export default function Claims() {
                   <HStack justify="space-between" mb={4}>
                     <VStack spacing={1} align="start">
                       <Text fontSize="lg" fontWeight="bold">
-                        {selectedClaim.claimNumber}
+                        {selectedClaim.claim_number || selectedClaim.id?.slice(0, 8) || 'Claim Details'}
                       </Text>
                       <Text fontSize="sm" color="gray.600">
-                        {selectedClaim.customerName}
+                        {selectedClaim.customer_name || selectedClaim.lender_name || 'Unknown Customer'}
                       </Text>
                     </VStack>
                     <Badge
@@ -448,30 +485,54 @@ export default function Claims() {
                       <HStack justify="space-between">
                         <Text fontSize="sm" color="gray.500">Amount</Text>
                         <Text fontSize="lg" fontWeight="bold" color="green.600">
-                          ${selectedClaim.amount.toLocaleString()}
+                          ${(selectedClaim.amount || 0).toLocaleString()}
                         </Text>
                       </HStack>
                       
                       <HStack justify="space-between">
                         <Text fontSize="sm" color="gray.500">Type</Text>
                         <Badge colorScheme="blue" variant="subtle">
-                          {selectedClaim.type.charAt(0).toUpperCase() + selectedClaim.type.slice(1)}
+                          {selectedClaim.type ? 
+                            selectedClaim.type.charAt(0).toUpperCase() + selectedClaim.type.slice(1) : 
+                            'General'
+                          }
                         </Badge>
                       </HStack>
                       
                       <HStack justify="space-between">
                         <Text fontSize="sm" color="gray.500">Priority</Text>
                         <Badge
-                          colorScheme={getPriorityColor(selectedClaim.priority)}
+                          colorScheme={getPriorityColor(selectedClaim.priority || 'medium')}
                           variant="subtle"
                         >
-                          {selectedClaim.priority.charAt(0).toUpperCase() + selectedClaim.priority.slice(1)}
+                          {selectedClaim.priority ? 
+                            selectedClaim.priority.charAt(0).toUpperCase() + selectedClaim.priority.slice(1) : 
+                            'Medium'
+                          }
                         </Badge>
                       </HStack>
                       
                       <HStack justify="space-between">
+                        <Text fontSize="sm" color="gray.500">Assigned To</Text>
+                        <HStack spacing={2}>
+                          <Avatar size="xs" name={selectedClaim.assigned_to || 'Unassigned'} />
+                          <Text fontSize="sm">{selectedClaim.assigned_to || 'Unassigned'}</Text>
+                        </HStack>
+                      </HStack>
+                      
+                      <HStack justify="space-between">
                         <Text fontSize="sm" color="gray.500">Documents</Text>
-                        <Text fontSize="sm">{selectedClaim.documents} files</Text>
+                        <Text fontSize="sm">{selectedClaim.documents_count || 0} files</Text>
+                      </HStack>
+
+                      <HStack justify="space-between">
+                        <Text fontSize="sm" color="gray.500">Created</Text>
+                        <Text fontSize="sm">{new Date(selectedClaim.created_at).toLocaleDateString()}</Text>
+                      </HStack>
+
+                      <HStack justify="space-between">
+                        <Text fontSize="sm" color="gray.500">Last Updated</Text>
+                        <Text fontSize="sm">{new Date(selectedClaim.updated_at).toLocaleDateString()}</Text>
                       </HStack>
                     </VStack>
                   </CardBody>
@@ -485,29 +546,61 @@ export default function Claims() {
                         Description
                       </Text>
                       <Text fontSize="sm" color="gray.600">
-                        {selectedClaim.description}
+                        {selectedClaim.description || 'No description available'}
                       </Text>
                     </VStack>
                   </CardBody>
                 </Card>
 
                 {/* Actions */}
-                <HStack spacing={3}>
-                  <Button leftIcon={<Edit size={16} />} colorScheme="blue" size="sm">
-                    Edit Claim
-                  </Button>
-                  <Button leftIcon={<CheckCircle size={16} />} colorScheme="green" size="sm">
-                    Approve
-                  </Button>
-                  <Button leftIcon={<AlertCircle size={16} />} colorScheme="red" size="sm">
-                    Reject
-                  </Button>
-                </HStack>
+                <VStack spacing={3}>
+                  <HStack spacing={3} w="full">
+                    <Button 
+                      leftIcon={<Edit size={16} />} 
+                      colorScheme="blue" 
+                      size="sm"
+                      flex="1"
+                    >
+                      Edit Claim
+                    </Button>
+                    <Button 
+                      leftIcon={<Download size={16} />} 
+                      variant="outline" 
+                      size="sm"
+                      flex="1"
+                    >
+                      Download
+                    </Button>
+                  </HStack>
+                  
+                  {selectedClaim.status === 'draft' && (
+                    <HStack spacing={3} w="full">
+                      <Button 
+                        leftIcon={<CheckCircle size={16} />} 
+                        colorScheme="green" 
+                        size="sm"
+                        flex="1"
+                        onClick={() => handleStatusUpdate(selectedClaim.id, 'active')}
+                      >
+                        Activate
+                      </Button>
+                      <Button 
+                        leftIcon={<AlertCircle size={16} />} 
+                        colorScheme="red" 
+                        size="sm"
+                        flex="1"
+                        onClick={() => handleStatusUpdate(selectedClaim.id, 'cancelled')}
+                      >
+                        Cancel
+                      </Button>
+                    </HStack>
+                  )}
+                </VStack>
               </VStack>
             )}
           </DrawerBody>
         </DrawerContent>
       </Drawer>
-    </Box>
+    </MotionBox>
   );
-} 
+}

@@ -6,7 +6,6 @@ const API_BASE_URL = 'https://preprod.theclaimpeople.com/api/v1';
 // Create axios instance
 const api = axios.create({
   baseURL: API_BASE_URL || import.meta.env.VITE_API_BASE_URL,
-  timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -24,6 +23,15 @@ api.interceptors.request.use(
     
     console.log('Request:', config.method?.toUpperCase(), config.url);
     console.log('Authorization header:', config.headers.Authorization ? 'Bearer [TOKEN]' : 'None');
+    
+    // Add timestamp to prevent caching issues
+    if (config.method === 'get') {
+      config.params = {
+        ...config.params,
+        _t: Date.now()
+      };
+    }
+    
     return config;
   },
   (error) => {

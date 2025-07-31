@@ -102,6 +102,7 @@ export default function Sidebar() {
       display="flex"
       flexDirection="column"
       position="fixed"
+      mt={4}
     >
       {/* Decorative top gradient */}
       <Box 

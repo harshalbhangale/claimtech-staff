@@ -12,31 +12,16 @@ import {
   Progress, 
   Icon,
   useColorModeValue,
+  Flex,
 } from '@chakra-ui/react';
-import { keyframes } from '@emotion/react';
 import { 
   Users, 
   FileText, 
   CheckCircle, 
   DollarSign, 
-  Plus,
-  BarChart3,
-  Target,
-  Award
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 
-
-const float = keyframes`
-  0% { transform: translateY(0px); }
-  50% { transform: translateY(-10px); }
-  100% { transform: translateY(0px); }
-`;
-
-const shimmer = keyframes`
-  0% { background-position: -200px 0; }
-  100% { background-position: calc(200px + 100%) 0; }
-`;
 
 // Motion components
 const MotionBox = motion(Box);
@@ -111,140 +96,83 @@ export default function Dashboard() {
           </VStack>
         </MotionBox>
 
-        {/* Stats Grid with Animations */}
-        <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={6} mb={8}>
-          {stats.map((stat, index) => (
-            <MotionCard
-              key={stat.label}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.5, delay: index * 0.1 }}
-              whileHover={{ 
-                scale: 1.05,
-                boxShadow: "0 20px 40px rgba(0,0,0,0.1)"
-              }}
-              bg={cardBg}
-              borderRadius="xl"
-              overflow="hidden"
-              position="relative"
-            >
-              <CardBody p={6}>
-                <VStack spacing={4} align="stretch">
-                  <HStack justify="space-between">
-                    <MotionBox
-                      whileHover={{ rotate: 360 }}
-                      transition={{ duration: 0.5 }}
-                    >
-                      <Icon 
-                        as={stat.icon} 
-                        boxSize={8} 
-                        color={`${stat.color}.500`}
-                      />
-                    </MotionBox>
-                    <Badge 
-                      colorScheme={stat.color} 
-                      variant="subtle"
-                      px={2}
-                      py={1}
-                      borderRadius="full"
-                    >
-                      {stat.change}
-                    </Badge>
-                  </HStack>
-                  
-                  <VStack spacing={1} align="start">
-                    <Text fontSize="2xl" fontWeight="bold" color={textColor}>
-                      {stat.value}
-                    </Text>
-                    <Text fontSize="sm" color="gray.500">
-                      {stat.label}
-                    </Text>
-                  </VStack>
-                  
-                  <Progress 
-                    value={stat.progress} 
-                    colorScheme={stat.color} 
-                    size="sm" 
-                    borderRadius="full"
-                  />
-                </VStack>
-              </CardBody>
-              
-              {/* Animated background gradient */}
-              <Box
-                position="absolute"
-                top={0}
-                left={0}
-                right={0}
-                bottom={0}
-                bg={`linear-gradient(135deg, ${stat.color}.50 0%, transparent 100%)`}
-                opacity={0.1}
-                zIndex={0}
-              />
-            </MotionCard>
-          ))}
-        </SimpleGrid>
-
-        {/* Quick Actions */}
-        <MotionBox
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.6, delay: 0.4 }}
-          mb={8}
-        >
-          <Card bg={cardBg} borderRadius="xl" p={6}>
-            <VStack spacing={4} align="stretch">
-              <Heading size="md" color={textColor}>
-                Quick Actions
-              </Heading>
-              <SimpleGrid columns={{ base: 1, md: 3 }} spacing={4}>
-                {[
-                  { icon: Plus, label: 'New Claim', color: 'blue', description: 'Create a new claim' },
-                  { icon: Users, label: 'Add User', color: 'green', description: 'Register new user' },
-                  { icon: FileText, label: 'View Reports', color: 'purple', description: 'Analytics & insights' }
-                ].map((action, _index) => (
-                  <MotionBox
-                    key={action.label}
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
-                  >
-                    <Card
-                      bg={`${action.color}.50`}
-                      border={`1px solid`}
-                      borderColor={`${action.color}.200`}
-                      borderRadius="lg"
-                      p={4}
-                      cursor="pointer"
-                      transition="all 0.2s"
-                      _hover={{
-                        bg: `${action.color}.100`,
-                        transform: 'translateY(-2px)',
-                        boxShadow: 'lg'
-                      }}
-                    >
-                      <VStack spacing={3} align="start">
-                        <HStack spacing={3}>
+          {/* Stats Grid with Animations */}
+          <Flex justify="center">
+            <SimpleGrid columns={{ base: 1, md: 2, lg: 4 }} spacing={6} mb={8} maxW="1000px" w="full">
+              {stats.map((stat, index) => (
+                <MotionCard
+                  key={stat.label}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5, delay: index * 0.1 }}
+                  whileHover={{ 
+                    scale: 1.05,
+                    boxShadow: "0 20px 40px rgba(0,0,0,0.1)"
+                  }}
+                  bg={cardBg}
+                  borderRadius="xl"
+                  overflow="hidden"
+                  position="relative"
+                >
+                  <CardBody p={6}>
+                    <VStack spacing={4} align="stretch">
+                      <HStack justify="space-between">
+                        <MotionBox
+                          whileHover={{ rotate: 360 }}
+                          transition={{ duration: 0.5 }}
+                        >
                           <Icon 
-                            as={action.icon} 
-                            boxSize={5} 
-                            color={`${action.color}.500`}
+                            as={stat.icon} 
+                            boxSize={8} 
+                            color={`${stat.color}.500`}
                           />
-                          <Text fontWeight="medium" color={`${action.color}.700`}>
-                            {action.label}
-                          </Text>
-                        </HStack>
-                        <Text fontSize="xs" color={`${action.color}.600`}>
-                          {action.description}
+                        </MotionBox>
+                        <Badge 
+                          colorScheme={stat.color} 
+                          variant="subtle"
+                          px={2}
+                          py={1}
+                          borderRadius="full"
+                        >
+                          {stat.change}
+                        </Badge>
+                      </HStack>
+                      
+                      <VStack spacing={1} align="start">
+                        <Text fontSize="2xl" fontWeight="bold" color={textColor}>
+                          {stat.value}
+                        </Text>
+                        <Text fontSize="sm" color="gray.500">
+                          {stat.label}
                         </Text>
                       </VStack>
-                    </Card>
-                  </MotionBox>
-                ))}
-              </SimpleGrid>
-            </VStack>
-          </Card>
-        </MotionBox>
-      </Container>
+                      
+                      <Progress 
+                        value={stat.progress} 
+                        colorScheme={stat.color} 
+                        size="sm" 
+                        borderRadius="full"
+                      />
+                    </VStack>
+                  </CardBody>
+                  
+                  {/* Animated background gradient */}
+                  <Box
+                    position="absolute"
+                    top={0}
+                    left={0}
+                    right={0}
+                    bottom={0}
+                    bg={`linear-gradient(135deg, ${stat.color}.50 0%, transparent 100%)`}
+                    opacity={0.1}
+                    zIndex={0}
+                  />
+                </MotionCard>
+              ))}
+            </SimpleGrid>
+          </Flex>
+        </Container>
+
     </Box>
   );
 }

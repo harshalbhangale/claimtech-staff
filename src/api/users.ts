@@ -86,4 +86,54 @@ export const usersAPI = {
   deleteUser: async (id: string): Promise<void> => {
     await apiClient.delete(`/staff-portal/users/${id}/`);
   },
+};
+
+// Claims and Lenders API
+export interface Lender {
+  id: string;
+  name: string;
+  uuid: string;
+  status: 'active' | 'inactive';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ClaimResponse {
+  id: string;
+  status: 'draft' | 'pending' | 'approved' | 'rejected' | 'processing';
+  lender: string;
+  lender_name: string;
+  created_at: string;
+  updated_at: string;
+  agreements: any[];
+}
+
+export interface CreateClaimsRequest {
+  lenders: string[];
+}
+
+export const claimsAPI = {
+  // Get all lenders
+  getLenders: async (): Promise<Lender[]> => {
+    const response = await apiClient.get('/staff-portal/lenders/');
+    return response.data;
+  },
+
+  // Create new claims for specified lenders
+  createClaims: async (data: CreateClaimsRequest): Promise<ClaimResponse[]> => {
+    const response = await apiClient.post('/claims/', data);
+    return response.data;
+  },
+
+  // Get all claims
+  getClaims: async (): Promise<ClaimResponse[]> => {
+    const response = await apiClient.get('/claims/');
+    return response.data;
+  },
+
+  // Get single claim by ID
+  getClaim: async (id: string): Promise<ClaimResponse> => {
+    const response = await apiClient.get(`/claims/${id}/`);
+    return response.data;
+  },
 }; 
