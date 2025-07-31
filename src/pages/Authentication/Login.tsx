@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Box,
@@ -16,7 +16,7 @@ import {
   Image,
   Collapse,
 } from '@chakra-ui/react';
-import { Eye, EyeOff, Lock, Mail, X} from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, X } from 'lucide-react';
 import { useAuth } from '../../contexts/AuthContext';
 
 export default function Login() {
@@ -25,6 +25,9 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [validationErrors, setValidationErrors] = useState<{ email?: string; password?: string }>({});
   const [showBackendError, setShowBackendError] = useState(false); // Controls visibility of backend error alert
+
+  // Ref for password input to restore focus after toggling visibility
+  const passwordInputRef = useRef<HTMLInputElement>(null);
 
   const navigate = useNavigate();
   const { login, isLoading, error, clearError, isAuthenticated } = useAuth();
@@ -164,6 +167,14 @@ export default function Login() {
     return showBackendError && commonAuthErrors.some(err => backendErrorString.includes(err));
   };
 
+  // Toggle password visibility and restore focus to password input
+  const handleTogglePassword = () => {
+    setShowPassword(prev => !prev);
+    // Restore focus after toggling, with a slight delay to ensure input type changes
+    setTimeout(() => {
+      passwordInputRef.current?.focus();
+    }, 0);
+  };
 
   return (
     <Box
@@ -322,6 +333,7 @@ export default function Login() {
                     </Text>
                     <Box position="relative">
                       <Input
+                        ref={passwordInputRef}
                         type={showPassword ? 'text' : 'password'}
                         placeholder="Enter your password"
                         value={password}
@@ -341,6 +353,7 @@ export default function Login() {
                           boxShadow: '0 0 0 1px var(--chakra-colors-brand-500)',
                         }}
                         isDisabled={isLoading}
+                        autoComplete="current-password"
                       />
                       <Box
                         position="absolute"
@@ -364,10 +377,12 @@ export default function Login() {
                         icon={showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                         variant="ghost"
                         size="sm"
-                        onClick={() => setShowPassword(!showPassword)}
+                        onClick={handleTogglePassword}
                         color="gray.400"
                         _hover={{ color: 'gray.600' }}
                         isDisabled={isLoading}
+                        tabIndex={-1}
+                        type="button"
                       />
                       {validationErrors.password && (
                         <Text fontSize="xs" color="red.500" mt={1}>
