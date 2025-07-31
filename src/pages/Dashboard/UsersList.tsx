@@ -5,7 +5,6 @@ import {
   HStack, 
   Text, 
   Badge, 
-  Button, 
   Input, 
   Card, 
   Heading,
@@ -37,7 +36,6 @@ import {
   Mail,
   Phone,
   Calendar,
-  Filter,
   Grid,
   List,
 } from 'lucide-react';
@@ -56,7 +54,7 @@ interface EnhancedUser extends UserType {
   age: number;
 }
 
-import { Skeleton, SkeletonCircle, SkeletonText } from "@chakra-ui/react";
+import { Skeleton, SkeletonCircle } from "@chakra-ui/react";
 
 function DataTableSkeleton({ rows = 10 }) {
   return (
@@ -130,7 +128,7 @@ export default function Users() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [ordering, setOrdering] = useState('created_at');
+  const [ordering] = useState('created_at');
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
   const [viewMode, setViewMode] = useState<'table' | 'cards'>('table');
@@ -436,97 +434,7 @@ export default function Users() {
   ], [isMobile, navigate, textColor]);
 
   // Custom styles for DataTable
-  const customStyles = {
-    header: {
-      style: {
-        minHeight: '56px',
-        backgroundColor: 'transparent',
-        borderBottom: 'none',
-      },
-    },
-    headRow: {
-      style: {
-        backgroundColor: '#f7fafc',
-        borderTopLeftRadius: '12px',
-        borderTopRightRadius: '12px',
-        borderBottom: '1px solid #e2e8f0',
-        minHeight: '52px',
-      },
-    },
-    headCells: {
-      style: {
-        fontSize: '14px',
-        fontWeight: '700',
-        color: '#553c9a',
-        textTransform: 'uppercase',
-        letterSpacing: '0.05em',
-        paddingLeft: '24px',
-        paddingRight: '24px',
-      },
-    },
-    rows: {
-      style: {
-        minHeight: '72px',
-        borderBottom: '1px solid #f1f5f9',
-        '&:hover': {
-          backgroundColor: '#faf5ff',
-          cursor: 'pointer',
-          transform: 'translateY(-1px)',
-          boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-        },
-        transition: 'all 0.2s ease',
-      },
-    },
-    cells: {
-      style: {
-        paddingLeft: '24px',
-        paddingRight: '24px',
-        fontSize: '14px',
-      },
-    },
-    pagination: {
-      style: {
-        borderTop: '1px solid #e2e8f0',
-        borderBottomLeftRadius: '12px',
-        borderBottomRightRadius: '12px',
-        backgroundColor: '#f8fafc',
-        minHeight: '56px',
-      },
-      pageButtonsStyle: {
-        borderRadius: '8px',
-        height: '36px',
-        width: '36px',
-        margin: '2px',
-        cursor: 'pointer',
-        transition: 'all 0.2s',
-        backgroundColor: 'white',
-        border: '1px solid #e2e8f0',
-        color: '#6b46c1',
-        '&:hover:not(:disabled)': {
-          backgroundColor: '#f3f4f6',
-          transform: 'scale(1.05)',
-        },
-      },
-    },
-    noData: {
-      style: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '200px',
-        backgroundColor: 'transparent',
-      },
-    },
-    progressPending: {
-      style: {
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        minHeight: '200px',
-        backgroundColor: 'transparent',
-      },
-    },
-  };
+  
 
   // Card view component for mobile
   const UserCard = ({ user }: { user: EnhancedUser }) => (
