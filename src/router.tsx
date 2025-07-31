@@ -5,7 +5,7 @@ import UsersList from './pages/Dashboard/UsersList';
 import UserDetails from './pages/Dashboard/UserDetails';
 import Claims from './pages/Dashboard/Claims';
 import SearchPage from './pages/Dashboard/Search';
-import DashboardLayout from './components/dashboard/layout';
+import DashboardLayout from './components/dashboard/DashboardLayout';
 import { useAuth } from './contexts/AuthContext';
 
 // Protected Route Component
