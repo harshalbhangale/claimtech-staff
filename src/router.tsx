@@ -1,7 +1,7 @@
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import Login from './pages/Authentication/Login';
 import Dashboard from './pages/Dashboard/Dashboard';
-import UsersList from './pages/Dashboard/UsersList';
+import UsersList from './pages/Dashboard/UsersListing';
 import UserDetails from './pages/Dashboard/UserDetails';
 import Claims from './pages/Dashboard/Claims';
 import SearchPage from './pages/Dashboard/Search';
