@@ -32,7 +32,11 @@ import {
   ModalCloseButton,
   useDisclosure,
   SimpleGrid,
-  Spinner
+  Spinner,
+  Menu,
+  MenuButton,
+  MenuList,
+  MenuItem
 } from '@chakra-ui/react';
 import {
   Phone,
@@ -46,7 +50,8 @@ import {
   AlertTriangle,
   FileDown,
   ChevronRight,
-  MessageSquare
+  MessageSquare,
+  ChevronDown
 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
@@ -54,6 +59,7 @@ import { useParams } from 'react-router-dom';
 import { usersAPI, type UserDetailsResponse } from '../../api/users';
 import DocumentDownloadService, { documentTypes, type DocumentType } from '../../api/download';
 import { RequirementRequestModal } from '../../components/Dashboard/UserDetails/UserInfoRequestModal';
+import { statusAPI, type StatusOption, type StatusType } from '../../api/status';
 
 // Motion components
 const MotionBox = motion(Box);
@@ -98,12 +104,34 @@ export default function UserDetails() {
     onClose: onRequirementModalClose 
   } = useDisclosure();
 
+  // Status management state
+  const [claimStatuses, setClaimStatuses] = useState<StatusOption[]>([]);
+  const [agreementStatuses, setAgreementStatuses] = useState<StatusOption[]>([]);
+  const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
+
   // Add this handler function
   const handleRequestInfoClick = (claimId: string, lenderName: string) => {
     setSelectedClaimForRequirement(claimId);
     setSelectedClaimLenderName(lenderName);
     onRequirementModalOpen();
   };
+
+  // Fetch statuses on component mount
+  useEffect(() => {
+    const fetchStatuses = async () => {
+      try {
+        const [claimStatusesData, agreementStatusesData] = await Promise.all([
+          statusAPI.getStatuses('claim'),
+          statusAPI.getStatuses('agreement')
+        ]);
+        setClaimStatuses(claimStatusesData);
+        setAgreementStatuses(agreementStatusesData);
+      } catch (error) {
+        console.error('Error fetching statuses:', error);
+      }
+    };
+    fetchStatuses();
+  }, []);
 
   // Fetch user details
   useEffect(() => {
@@ -196,6 +224,59 @@ export default function UserDetails() {
       });
     } finally {
       setIsDownloading(false);
+    }
+  };
+
+  // Handle status update
+  const handleStatusUpdate = async (type: StatusType, id: string, newStatus: string) => {
+    const updateKey = `${type}_${id}`;
+    setUpdatingStatus(updateKey);
+    
+    try {
+      const updateData = {
+        type,
+        status: newStatus,
+        ...(type === 'claim' ? { claim_id: id } : { agreement_id: id })
+      };
+      
+      await statusAPI.updateStatus(updateData);
+      
+      // Update local state to reflect the change
+      if (userData) {
+        const updatedUserData = { ...userData };
+        if (type === 'claim') {
+          updatedUserData.claims = updatedUserData.claims.map(claim => 
+            claim.id === id ? { ...claim, status: newStatus } : claim
+          );
+        } else {
+          // Update agreement status within claims
+          updatedUserData.claims = updatedUserData.claims.map(claim => ({
+            ...claim,
+            agreements: claim.agreements?.map((agreement: any, index: number) => 
+              `${claim.id}_${index}` === id ? { ...agreement, status: newStatus } : agreement
+            )
+          }));
+        }
+        setUserData(updatedUserData);
+      }
+      
+      toast({
+        title: 'Status Updated',
+        description: `${type === 'claim' ? 'Claim' : 'Agreement'} status updated successfully`,
+        status: 'success',
+        duration: 2000,
+        isClosable: true,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Update Failed',
+        description: error.message || `Failed to update ${type} status`,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    } finally {
+      setUpdatingStatus(null);
     }
   };
 
@@ -380,17 +461,34 @@ export default function UserDetails() {
                             </HStack>
                           </VStack>
                         </HStack>
-                        <Badge
-                          colorScheme={getStatusColor(claim.status)}
-                          variant="solid"
-                          fontSize="xs"
-                          px={3}
-                          py={1}
-                          borderRadius="full"
-                          textTransform="capitalize"
-                        >
-                          {claim.status}
-                        </Badge>
+                        <VStack spacing={2} align="end">
+                          <Text fontSize="xs" color="gray.500" fontWeight="medium">Claim Status</Text>
+                          <Menu>
+                            <MenuButton
+                              as={Button}
+                              rightIcon={<ChevronDown size={14} />}
+                              size="sm"
+                              variant="outline"
+                              colorScheme={getStatusColor(claim.status)}
+                              isLoading={updatingStatus === `claim_${claim.id}`}
+                              loadingText="Updating..."
+                              minW="120px"
+                            >
+                              {claim.status}
+                            </MenuButton>
+                            <MenuList>
+                              {claimStatuses.map((status) => (
+                                <MenuItem
+                                  key={status.value}
+                                  onClick={() => handleStatusUpdate('claim', claim.id, status.value)}
+                                  isDisabled={status.value === claim.status}
+                                >
+                                  {status.label}
+                                </MenuItem>
+                              ))}
+                            </MenuList>
+                          </Menu>
+                        </VStack>
                       </HStack>
                       {/* Agreements Section */}
                       {claim.agreements && claim.agreements.length > 0 && (
@@ -402,28 +500,60 @@ export default function UserDetails() {
                             </Text>
                           </HStack>
                           <VStack spacing={3} w="full" align="stretch">
-                            {claim.agreements.map((_agreement: any, agreementIndex: number) => (
-                              <VStack
-                                key={agreementIndex}
-                                bg={useColorModeValue('gray.50', 'gray.600')}
-                                p={3}
-                                borderRadius="md"
-                                border="1px solid"
-                                borderColor={borderColor}
-                                spacing={2}
-                                _hover={{ bg: 'green.50', borderColor: 'green.200' }}
-                                cursor="pointer"
-                                transition="all 0.2s"
-                                align="start"
-                              >
-                                <HStack>
-                                  <Icon as={CheckCircle} color="green.500" boxSize={4} />
-                                  <Text fontSize="sm" color={textColor} fontWeight="medium">
-                                    Agreement {agreementIndex + 1}
-                                  </Text>
-                                </HStack>
-                              </VStack>
-                            ))}
+                            {claim.agreements.map((agreement: any, agreementIndex: number) => {
+                              const agreementId = `${claim.id}_${agreementIndex}`;
+                              return (
+                                <VStack
+                                  key={agreementIndex}
+                                  bg={useColorModeValue('gray.50', 'gray.600')}
+                                  p={4}
+                                  borderRadius="md"
+                                  border="1px solid"
+                                  borderColor={borderColor}
+                                  spacing={3}
+                                  _hover={{ bg: 'green.50', borderColor: 'green.200' }}
+                                  transition="all 0.2s"
+                                  align="stretch"
+                                >
+                                  <HStack justify="space-between" align="center">
+                                    <HStack>
+                                      <Icon as={CheckCircle} color="green.500" boxSize={4} />
+                                      <Text fontSize="sm" color={textColor} fontWeight="medium">
+                                        Agreement {agreementIndex + 1}
+                                      </Text>
+                                    </HStack>
+                                    <VStack spacing={1} align="end">
+                                      <Text fontSize="xs" color="gray.500" fontWeight="medium">Agreement Status</Text>
+                                      <Menu>
+                                        <MenuButton
+                                          as={Button}
+                                          rightIcon={<ChevronDown size={12} />}
+                                          size="xs"
+                                          variant="outline"
+                                          colorScheme={getStatusColor(agreement.status || 'pending')}
+                                          isLoading={updatingStatus === `agreement_${agreementId}`}
+                                          loadingText="Updating..."
+                                          minW="100px"
+                                        >
+                                          {agreement.status || 'pending'}
+                                        </MenuButton>
+                                        <MenuList>
+                                          {agreementStatuses.map((status) => (
+                                            <MenuItem
+                                              key={status.value}
+                                              onClick={() => handleStatusUpdate('agreement', agreementId, status.value)}
+                                              isDisabled={status.value === (agreement.status || 'pending')}
+                                            >
+                                              {status.label}
+                                            </MenuItem>
+                                          ))}
+                                        </MenuList>
+                                      </Menu>
+                                    </VStack>
+                                  </HStack>
+                                </VStack>
+                              );
+                            })}
                           </VStack>
                         </VStack>
                       )}
