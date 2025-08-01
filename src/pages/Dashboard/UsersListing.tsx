@@ -427,7 +427,6 @@ export default function Users() {
         </HStack>
       ),
       ignoreRowClick: true,
-      allowOverflow: true,
       button: true,
       minWidth: '120px',
     },

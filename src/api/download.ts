@@ -4,7 +4,7 @@ export type DocumentType =
   | 'care_pack'
   | 'dsar_request' 
   | 'letter_of_claim'
-  | 'prowse_phillips_dsa'
+  | 'prowse_phillips_dba'
   | 'prowse_phillips_loa'
   | 'solvo_loa';
 
@@ -33,7 +33,7 @@ export const documentTypes: { value: DocumentType; label: string; description: s
     description: 'Official letter of claim document'
   },
   {
-    value: 'prowse_phillips_dsa',
+    value: 'prowse_phillips_dba',
     label: 'Prowse Phillips DSA',
     description: 'Prowse Phillips Data Sharing Agreement'
   },
