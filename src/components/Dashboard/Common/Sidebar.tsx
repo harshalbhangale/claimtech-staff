@@ -6,7 +6,7 @@ import { useSidebar } from '../../../contexts/SidebarContext';
 
 const menuItems = [
   { icon: Home, label: 'Dashboard', path: '/dashboard' },
-  { icon: Search, label: 'Search', path: '/search' },
+  { icon: Search, label: 'Search', path: '/search', disabled: true },
   { icon: Users, label: 'Users', path: '/users' },
   { icon: FileText, label: 'Claims', path: '/claims', disabled: true },
   { icon: Settings, label: 'Settings', path: '/settings', disabled: true },
