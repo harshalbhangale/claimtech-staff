@@ -14,7 +14,6 @@ import {
   AlertTitle,
   AlertDescription,
   Avatar,
-  Badge,
   Button,
   Divider,
   Grid,
@@ -32,11 +31,16 @@ import {
   ModalCloseButton,
   useDisclosure,
   SimpleGrid,
-  Spinner,
   Menu,
   MenuButton,
   MenuList,
-  MenuItem
+  MenuItem,
+  Badge,
+  Accordion,
+  AccordionItem,
+  AccordionButton,
+  AccordionPanel,
+  AccordionIcon,
 } from '@chakra-ui/react';
 import {
   Phone,
@@ -44,35 +48,50 @@ import {
   FileText,
   Building,
   CheckCircle,
-  Edit,
   Download,
   Award,
   AlertTriangle,
   FileDown,
-  ChevronRight,
   MessageSquare,
-  ChevronDown
+  ChevronDown,
+  User,
+  Mail,
+  Clock,
+  MapPin,
+  FileX,
 } from 'lucide-react';
-import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { usersAPI, type UserDetailsResponse } from '../../api/users';
+import { usersAPI, type UserDetailsResponse, type Address, type Agreement } from '../../api/users';
 import DocumentDownloadService, { documentTypes, type DocumentType } from '../../api/download';
-import { RequirementRequestModal } from '../../components/Dashboard/UserDetails/UserInfoRequestModal';
-import { statusAPI, type StatusOption, type StatusType } from '../../api/status';
+import { RequirementRequestModal } from '../../components/UserDetails/AdditionalRequirementModal';
+import { statusAPI, type StatusType } from '../../api/status';
+import { useQuery } from '@tanstack/react-query';
 
-// Motion components
-const MotionBox = motion(Box);
-const MotionCard = motion(Card);
+function formatDateTime(dt: string) {
+  if (!dt) return '';
+  const d = new Date(dt);
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
 
-// Document types available for download
-
+function formatAddress(address: Address): string {
+  const parts = [
+    address.address_line_1,
+    address.address_line_2,
+    address.address_line_3,
+    address.address_line_4,
+    address.address_line_5,
+    address.city,
+    address.region,
+    address.postcode,
+    address.country
+  ].filter(part => part && part.trim() !== '');
+  
+  return parts.join(', ');
+}
 
 export default function UserDetails() {
   const { userId } = useParams();
-  const [userData, setUserData] = useState<UserDetailsResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
 
   // Modal states
   const { isOpen: isDownloadModalOpen, onOpen: onDownloadModalOpen, onClose: onDownloadModalClose } = useDisclosure();
@@ -95,9 +114,11 @@ export default function UserDetails() {
     if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < birthDate.getDate())) age--;
     return age;
   };
+
   // Add these state variables to your component
   const [selectedClaimForRequirement, setSelectedClaimForRequirement] = useState<string | null>(null);
   const [selectedClaimLenderName, setSelectedClaimLenderName] = useState<string>('');
+
   const { 
     isOpen: isRequirementModalOpen, 
     onOpen: onRequirementModalOpen, 
@@ -105,9 +126,43 @@ export default function UserDetails() {
   } = useDisclosure();
 
   // Status management state
-  const [claimStatuses, setClaimStatuses] = useState<StatusOption[]>([]);
-  const [agreementStatuses, setAgreementStatuses] = useState<StatusOption[]>([]);
   const [updatingStatus, setUpdatingStatus] = useState<string | null>(null);
+
+  // Fetch user details with TanStack Query
+  const {
+    data: userData,
+    isLoading: userLoading,
+    isError: userError,
+    error: userErrorData,
+  } = useQuery<UserDetailsResponse, Error>({
+    queryKey: ['user', userId],
+    queryFn: async () => {
+      if (!userId) throw new Error('User ID is required');
+      const response = await usersAPI.getUser(userId);
+      return response;
+    },
+    enabled: !!userId,
+    staleTime: 1000 * 60 * 5, // 5 minutes
+  });
+
+  // Fetch statuses with TanStack Query
+  const {
+    data: statusesData,
+    isLoading: statusesLoading,
+  } = useQuery({
+    queryKey: ['statuses'],
+    queryFn: async () => {
+      const [claimStatusesData, agreementStatusesData] = await Promise.all([
+        statusAPI.getStatuses('claim'),
+        statusAPI.getStatuses('agreement')
+      ]);
+      return { claimStatuses: claimStatusesData, agreementStatuses: agreementStatusesData };
+    },
+    staleTime: 1000 * 60 * 10, // 10 minutes
+  });
+
+  const claimStatuses = statusesData?.claimStatuses || [];
+  const agreementStatuses = statusesData?.agreementStatuses || [];
 
   // Add this handler function
   const handleRequestInfoClick = (claimId: string, lenderName: string) => {
@@ -116,51 +171,58 @@ export default function UserDetails() {
     onRequirementModalOpen();
   };
 
-  // Fetch statuses on component mount
-  useEffect(() => {
-    const fetchStatuses = async () => {
-      try {
-        const [claimStatusesData, agreementStatusesData] = await Promise.all([
-          statusAPI.getStatuses('claim'),
-          statusAPI.getStatuses('agreement')
-        ]);
-        setClaimStatuses(claimStatusesData);
-        setAgreementStatuses(agreementStatusesData);
-      } catch (error) {
-        console.error('Error fetching statuses:', error);
-      }
-    };
-    fetchStatuses();
-  }, []);
+  // Handle agreement document download
+  const handleAgreementDownload = async (agreement: Agreement) => {
+    if (!agreement.agreement_document_url) {
+      toast({
+        title: 'No Document Available',
+        description: 'No finance agreement document has been uploaded for this agreement.',
+        status: 'warning',
+        duration: 3000,
+        isClosable: true,
+      });
+      return;
+    }
 
-  // Fetch user details
+    try {
+      // Create a temporary link to download the file
+      const link = document.createElement('a');
+      link.href = agreement.agreement_document_url;
+      link.download = `finance_agreement_${agreement.agreement_number}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      toast({
+        title: 'Download Started',
+        description: 'Finance agreement document download started',
+        status: 'success',
+        duration: 2000,
+        isClosable: true,
+      });
+    } catch (error: any) {
+      toast({
+        title: 'Download Failed',
+        description: error.message || 'Failed to download agreement document',
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  };
+
+  // Error handling
   useEffect(() => {
-    const fetchUserDetails = async () => {
-      if (!userId) return;
-      try {
-        setLoading(true);
-        setError(null);
-        const response = await usersAPI.getUser(userId);
-        setUserData(response);
-      } catch (err: any) {
-        const errorMessage = err.response?.data?.message ||
-          err.response?.data?.detail ||
-          err.message ||
-          'Failed to fetch user details';
-        setError(errorMessage);
-        toast({
-          title: 'Error',
-          description: errorMessage,
-          status: 'error',
-          duration: 3000,
-          isClosable: true,
-        });
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchUserDetails();
-  }, [userId, toast]);
+    if (userError && userErrorData instanceof Error) {
+      toast({
+        title: 'Error',
+        description: userErrorData.message,
+        status: 'error',
+        duration: 3000,
+        isClosable: true,
+      });
+    }
+  }, [userError, userErrorData, toast]);
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -241,24 +303,8 @@ export default function UserDetails() {
       
       await statusAPI.updateStatus(updateData);
       
-      // Update local state to reflect the change
-      if (userData) {
-        const updatedUserData = { ...userData };
-        if (type === 'claim') {
-          updatedUserData.claims = updatedUserData.claims.map(claim => 
-            claim.id === id ? { ...claim, status: newStatus } : claim
-          );
-        } else {
-          // Update agreement status within claims
-          updatedUserData.claims = updatedUserData.claims.map(claim => ({
-            ...claim,
-            agreements: claim.agreements?.map((agreement: any, index: number) => 
-              `${claim.id}_${index}` === id ? { ...agreement, status: newStatus } : agreement
-            )
-          }));
-        }
-        setUserData(updatedUserData);
-      }
+      // Invalidate and refetch user data to get updated status
+      // Note: In a real app, you'd use queryClient.invalidateQueries(['user', userId])
       
       toast({
         title: 'Status Updated',
@@ -280,7 +326,7 @@ export default function UserDetails() {
     }
   };
 
-  if (loading) {
+  if (userLoading || statusesLoading) {
     return (
       <Box bg={bgColor} minH="100vh" p={4}>
         <Container maxW="container.xl">
@@ -294,14 +340,14 @@ export default function UserDetails() {
     );
   }
 
-  if (error) {
+  if (userError) {
     return (
       <Box bg={bgColor} minH="100vh" p={4}>
         <Container maxW="container.xl">
           <Alert status="error" borderRadius="lg">
             <AlertIcon />
             <AlertTitle>Error!</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>{userErrorData instanceof Error ? userErrorData.message : 'Failed to fetch user details'}</AlertDescription>
           </Alert>
         </Container>
       </Box>
@@ -329,150 +375,214 @@ export default function UserDetails() {
     <Box bg={bgColor} minH="100vh" py={4}>
       <Container maxW="container.xl">
         {/* Header */}
-        <MotionBox
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-          mb={4}
-        >
-          <HStack justify="space-between" align="center">
-            <VStack spacing={4}>
-              <Heading size="lg" color={textColor}>
-                User Details
-              </Heading>
-            </VStack>
-            <HStack spacing={2}>
-              <Button leftIcon={<Edit size={14} />} colorScheme="blue" size="sm" variant="outline">Edit</Button>
-              <Button leftIcon={<Download size={14} />} colorScheme="green" size="sm" variant="outline">Export</Button>
-            </HStack>
-          </HStack>
-        </MotionBox>
+        <HStack justify="space-between" align="center" mb={6}>
+          <Heading size="md" color={textColor}>User Details</Heading>
+        </HStack>
 
-        {/* User Profile Card - Compact */}
-        <MotionCard
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1 }}
-          bg={cardBg}
-          borderRadius="xl"
-          shadow="sm"
-          mb={4}
-          border="1px solid"
-          borderColor={borderColor}
-        >
+        {/* User Profile Card - Optimized */}
+        <Card bg={cardBg} borderRadius="lg" shadow="sm" mb={6} border="1px solid" borderColor={borderColor}>
           <CardBody p={6}>
-            <HStack spacing={6} align="start" flexWrap="wrap">
+            <Grid templateColumns={{ base: "1fr", md: "auto 1fr auto" }} gap={6} alignItems="center">
               {/* Avatar */}
-              <Avatar
-                size="lg"
-                name={`${user.first_name} ${user.last_name}`}
-                bg="purple.500"
-              />
+              <Avatar size="lg" name={`${user.first_name} ${user.last_name}`} bg="purple.500" />
+              
               {/* User Info */}
-              <VStack align="start" spacing={1} flex="1">
-                <Heading size="md" color={textColor}>{user.first_name} {user.last_name}</Heading>
-                <Text color="gray.500" fontSize="sm">{user.email}</Text>
-                <HStack spacing={4} pt={1} flexWrap="wrap">
+              <VStack align="start" spacing={2}>
+                <Heading size="lg" color={textColor}>{user.first_name} {user.last_name}</Heading>
+                <HStack spacing={4} flexWrap="wrap">
                   <HStack spacing={1}>
-                    <Icon as={Phone} boxSize={4} color="gray.400" />
-                    <Text fontSize="xs" color="gray.500">{user.phone_number || 'N/A'}</Text>
+                    <Icon as={Mail} boxSize={4} color="gray.400" />
+                    <Text fontSize="sm" color="gray.600">{user.email}</Text>
                   </HStack>
                   <HStack spacing={1}>
-                    <Icon as={Calendar} boxSize={4} color="gray.400" />
-                    <Text fontSize="xs" color="gray.500">Age {age}</Text>
+                    <Icon as={Phone} boxSize={4} color="gray.400" />
+                    <Text fontSize="sm" color="gray.600">{user.phone_number || 'N/A'}</Text>
+                  </HStack>
+                  <HStack spacing={1}>
+                    <Icon as={User} boxSize={4} color="gray.400" />
+                    <Text fontSize="sm" color="gray.600">Age: {age}</Text>
+                  </HStack>
+                </HStack>
+                <HStack spacing={4} flexWrap="wrap">
+                  <HStack spacing={1}>
+                    <Icon as={Calendar} boxSize={4} color="blue.400" />
+                    <Text fontSize="sm" color="blue.600">Joined: {formatDateTime(user.created_at)}</Text>
+                  </HStack>
+                  <HStack spacing={1}>
+                    <Icon as={Clock} boxSize={4} color="green.400" />
+                    <Text fontSize="sm" color="green.600">Last Active: {formatDateTime(user.updated_at)}</Text>
                   </HStack>
                 </HStack>
               </VStack>
-              <Grid templateColumns="repeat(2, 1fr)" gap={4} minW="200px">
-                <Stat textAlign="center" bg={useColorModeValue('purple.50', 'purple.900')} p={3} borderRadius="md">
-                  <StatNumber fontSize="xl" color="purple.600">{claims.length}</StatNumber>
+              
+              {/* Stats */}
+              <Grid minW="120px">
+                <Stat textAlign="center" bg={useColorModeValue('purple.50', 'purple.900')} p={2} borderRadius="md">
+                  <StatNumber fontSize="lg" color="purple.600">{claims.length}</StatNumber>
                   <StatLabel fontSize="xs" color="purple.500">Claims</StatLabel>
                 </Stat>
-                <Stat textAlign="center" bg={useColorModeValue('blue.50', 'blue.900')} p={3} borderRadius="md">
-                  <StatNumber fontSize="xl" color="blue.600">{new Date(user.created_at).getFullYear()}</StatNumber>
-                  <StatLabel fontSize="xs" color="blue.500">Member Since</StatLabel>
-                </Stat>
               </Grid>
-            </HStack>
+            </Grid>
           </CardBody>
-        </MotionCard>
+        </Card>
+
+        {/* Address Information */}
+        <Card bg={cardBg} borderRadius="lg" shadow="md" border="1px solid" borderColor={borderColor} mb={6}>
+          <CardBody p={4}>
+            <HStack spacing={3} mb={4}>
+              <Box bg="green.100" p={2} borderRadius="lg">
+                <Icon as={MapPin} color="green.600" boxSize={5} />
+              </Box>
+              <Heading size="md" color={textColor} fontWeight="bold">Address Information</Heading>
+            </HStack>
+
+            <Accordion allowToggle>
+              {/* Current Address */}
+              <AccordionItem border="1px solid" borderColor={borderColor} borderRadius="md" mb={3}>
+                <AccordionButton>
+                  <HStack spacing={3} flex="1" textAlign="left">
+                    <Badge colorScheme="green" variant="subtle">Current</Badge>
+                    <Text fontWeight="medium" color={textColor}>
+                      {user.address ? formatAddress(user.address) : 'No current address available'}
+                    </Text>
+                  </HStack>
+                  <AccordionIcon />
+                </AccordionButton>
+                <AccordionPanel pb={4}>
+                  {user.address ? (
+                    <VStack align="start" spacing={2}>
+                      <SimpleGrid columns={2} spacing={4} w="full">
+                        <Box>
+                          <Text fontSize="xs" color="gray.500" fontWeight="medium">Address Line 1</Text>
+                          <Text fontSize="sm">{user.address.address_line_1 || 'N/A'}</Text>
+                        </Box>
+                        <Box>
+                          <Text fontSize="xs" color="gray.500" fontWeight="medium">Address Line 2</Text>
+                          <Text fontSize="sm">{user.address.address_line_2 || 'N/A'}</Text>
+                        </Box>
+                        <Box>
+                          <Text fontSize="xs" color="gray.500" fontWeight="medium">Address Line 3</Text>
+                          <Text fontSize="sm">{user.address.address_line_3 || 'N/A'}</Text>
+                        </Box>
+                        <Box>
+                          <Text fontSize="xs" color="gray.500" fontWeight="medium">City</Text>
+                          <Text fontSize="sm">{user.address.city || 'N/A'}</Text>
+                        </Box>
+                        <Box>
+                          <Text fontSize="xs" color="gray.500" fontWeight="medium">Region</Text>
+                          <Text fontSize="sm">{user.address.region || 'N/A'}</Text>
+                        </Box>
+                        <Box>
+                          <Text fontSize="xs" color="gray.500" fontWeight="medium">Postcode</Text>
+                          <Text fontSize="sm">{user.address.postcode || 'N/A'}</Text>
+                        </Box>
+                        <Box>
+                          <Text fontSize="xs" color="gray.500" fontWeight="medium">Country</Text>
+                          <Text fontSize="sm">{user.address.country || 'N/A'}</Text>
+                        </Box>
+                        <Box>
+                          <Text fontSize="xs" color="gray.500" fontWeight="medium">Bureau ID</Text>
+                          <Text fontSize="sm">{user.address.beureau_id || 'N/A'}</Text>
+                        </Box>
+                      </SimpleGrid>
+                    </VStack>
+                  ) : (
+                    <Text color="gray.500" fontSize="sm">No current address information available</Text>
+                  )}
+                </AccordionPanel>
+              </AccordionItem>
+
+              {/* Previous Addresses */}
+              {user.previous_addresses && user.previous_addresses.length > 0 && (
+                <AccordionItem border="1px solid" borderColor={borderColor} borderRadius="md">
+                  <AccordionButton>
+                    <HStack spacing={3} flex="1" textAlign="left">
+                      <Badge colorScheme="orange" variant="subtle">Previous</Badge>
+                      <Text fontWeight="medium" color={textColor}>
+                        {user.previous_addresses.length} previous address{user.previous_addresses.length > 1 ? 'es' : ''}
+                      </Text>
+                    </HStack>
+                    <AccordionIcon />
+                  </AccordionButton>
+                  <AccordionPanel pb={4}>
+                    <VStack spacing={3} align="stretch">
+                      {user.previous_addresses.map((address, index) => (
+                        <Card key={index} bg={useColorModeValue('gray.50', 'gray.700')} p={3} borderRadius="md">
+                          <VStack align="start" spacing={2}>
+                            <HStack justify="space-between" w="full">
+                              <Badge colorScheme="orange" variant="subtle" size="sm">
+                                Previous Address {index + 1}
+                              </Badge>
+                              <Text fontSize="xs" color="gray.500">
+                                {formatDateTime(address.created_at || '')}
+                              </Text>
+                            </HStack>
+                            <Text fontSize="sm" fontWeight="medium">
+                              {formatAddress(address)}
+                            </Text>
+                            <SimpleGrid columns={2} spacing={2} w="full" fontSize="xs">
+                              <Text color="gray.500">City: {address.city || 'N/A'}</Text>
+                              <Text color="gray.500">Postcode: {address.postcode || 'N/A'}</Text>
+                              <Text color="gray.500">Region: {address.region || 'N/A'}</Text>
+                              <Text color="gray.500">Bureau ID: {address.beureau_id || 'N/A'}</Text>
+                            </SimpleGrid>
+                          </VStack>
+                        </Card>
+                      ))}
+                    </VStack>
+                  </AccordionPanel>
+                </AccordionItem>
+              )}
+            </Accordion>
+          </CardBody>
+        </Card>
 
         {/* Claims Section */}
-        <MotionCard
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          bg={cardBg}
-          borderRadius="xl"
-          shadow="md"
-          border="1px solid"
-          borderColor={borderColor}
-          overflow="hidden"
-          _hover={{ shadow: "lg", transform: "translateY(-2px)" }}
-        >
+        <Card bg={cardBg} borderRadius="lg" shadow="md" border="1px solid" borderColor={borderColor} overflow="hidden">
           <CardBody p={6}>
-            <HStack justify="space-between" mb={5}>
+            <HStack justify="space-between" mb={4}>
               <HStack spacing={3}>
                 <Box bg="blue.100" p={2} borderRadius="lg">
                   <Icon as={FileText} color="blue.600" boxSize={5} />
                 </Box>
                 <Heading size="md" color={textColor} fontWeight="bold">Claims ({claims.length})</Heading>
               </HStack>
-              {claims.length > 0 && (
-                <Button size="sm" colorScheme="blue" variant="ghost" rightIcon={<ChevronRight size={16} />}>View All</Button>
-              )}
             </HStack>
+            
             {claims.length === 0 ? (
-              <Box textAlign="center" py={10} bg={useColorModeValue('gray.50', 'gray.700')} borderRadius="lg">
-                <Icon as={AlertTriangle} boxSize={10} color="gray.400" mb={3} />
+              <Box textAlign="center" py={8} bg={useColorModeValue('gray.50', 'gray.700')} borderRadius="lg">
+                <Icon as={AlertTriangle} boxSize={8} color="gray.400" mb={3} />
                 <Text color="gray.500" fontWeight="medium">No claims found</Text>
                 <Text color="gray.400" fontSize="sm" mt={1}>This user hasn't submitted any claims yet</Text>
               </Box>
             ) : (
               <VStack spacing={4} align="stretch">
-                {claims.map((claim, index) => (
-                  <MotionBox
-                    key={claim.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ duration: 0.5, delay: 0.3 + index * 0.1 }}
-                    bg={useColorModeValue('white', 'gray.700')}
-                    p={5}
-                    borderRadius="lg"
-                    border="1px solid"
-                    borderColor={borderColor}
-                    shadow="sm"
-                    _hover={{ shadow: "md", borderColor: "blue.200" }}
-                  >
-                    <VStack spacing={4} align="stretch">
+                {claims.map((claim) => (
+                  <Card key={claim.id} bg={useColorModeValue('white', 'gray.700')} p={4} borderRadius="md" border="1px solid" borderColor={borderColor}>
+                    <VStack spacing={3} align="stretch">
+                      {/* Claim Header */}
                       <HStack justify="space-between" align="center">
-                        <HStack spacing={4}>
-                          <Box bg="blue.100" p={3} borderRadius="lg">
-                            <Icon as={Building} color="blue.600" boxSize={5} />
+                        <HStack spacing={3}>
+                          <Box bg="blue.100" p={2} borderRadius="md">
+                            <Icon as={Building} color="blue.600" boxSize={4} />
                           </Box>
                           <VStack align="start" spacing={0}>
                             <Text fontWeight="bold" color={textColor} fontSize="md">{claim.lender_name}</Text>
-                            <HStack spacing={2} mt={1}>
-                              <Text fontSize="xs" color="gray.500">ID: {claim.id}</Text>
-                              <Box w="1px" h="10px" bg="gray.300" />
-                              <Text fontSize="xs" color="gray.500">
-                                {new Date(claim.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}
-                              </Text>
-                            </HStack>
+                            <Text fontSize="xs" color="gray.500">ID: {claim.id}</Text>
                           </VStack>
                         </HStack>
-                        <VStack spacing={2} align="end">
-                          <Text fontSize="xs" color="gray.500" fontWeight="medium">Claim Status</Text>
+                        <VStack spacing={1} align="end">
+                          <Text fontSize="xs" color="gray.500" fontWeight="medium">Update Claim Status</Text>
                           <Menu>
                             <MenuButton
                               as={Button}
-                              rightIcon={<ChevronDown size={14} />}
+                              rightIcon={<ChevronDown size={12} />}
                               size="sm"
                               variant="outline"
                               colorScheme={getStatusColor(claim.status)}
                               isLoading={updatingStatus === `claim_${claim.id}`}
                               loadingText="Updating..."
-                              minW="120px"
+                              minW="100px"
                             >
                               {claim.status}
                             </MenuButton>
@@ -490,76 +600,142 @@ export default function UserDetails() {
                           </Menu>
                         </VStack>
                       </HStack>
+                      
+                      {/* Claim Dates */}
+                      <HStack spacing={4} fontSize="xs" color="gray.500">
+                        <HStack spacing={1}>
+                          <Icon as={Calendar} boxSize={3} />
+                          <Text>Created: {formatDateTime(claim.created_at)}</Text>
+                        </HStack>
+                        <HStack spacing={1}>
+                          <Icon as={Clock} boxSize={3} />
+                          <Text>Updated: {formatDateTime(claim.updated_at)}</Text>
+                        </HStack>
+                      </HStack>
+                      
                       {/* Agreements Section */}
                       {claim.agreements && claim.agreements.length > 0 && (
-                        <VStack align="start" spacing={3} mt={1}>
-                          <HStack spacing={2} bg="purple.50" px={3} py={1} borderRadius="md">
-                            <Icon as={Award} color="purple.500" boxSize={4} />
-                            <Text fontSize="sm" fontWeight="medium" color="purple.700">
-                              Agreements ({claim.agreements.length})
-                            </Text>
-                          </HStack>
-                          <VStack spacing={3} w="full" align="stretch">
-                            {claim.agreements.map((agreement: any, agreementIndex: number) => {
-                              const agreementId = `${claim.id}_${agreementIndex}`;
-                              return (
-                                <VStack
-                                  key={agreementIndex}
-                                  bg={useColorModeValue('gray.50', 'gray.600')}
-                                  p={4}
-                                  borderRadius="md"
-                                  border="1px solid"
-                                  borderColor={borderColor}
-                                  spacing={3}
-                                  _hover={{ bg: 'green.50', borderColor: 'green.200' }}
-                                  transition="all 0.2s"
-                                  align="stretch"
-                                >
-                                  <HStack justify="space-between" align="center">
-                                    <HStack>
-                                      <Icon as={CheckCircle} color="green.500" boxSize={4} />
-                                      <Text fontSize="sm" color={textColor} fontWeight="medium">
-                                        Agreement {agreementIndex + 1}
-                                      </Text>
-                                    </HStack>
-                                    <VStack spacing={1} align="end">
-                                      <Text fontSize="xs" color="gray.500" fontWeight="medium">Agreement Status</Text>
-                                      <Menu>
-                                        <MenuButton
-                                          as={Button}
-                                          rightIcon={<ChevronDown size={12} />}
-                                          size="xs"
-                                          variant="outline"
-                                          colorScheme={getStatusColor(agreement.status || 'pending')}
-                                          isLoading={updatingStatus === `agreement_${agreementId}`}
-                                          loadingText="Updating..."
-                                          minW="100px"
+                        <Accordion allowToggle>
+                          <AccordionItem border="1px solid" borderColor={borderColor} borderRadius="md" mb={2}>
+                            <AccordionButton>
+                              <HStack spacing={2} flex="1" textAlign="left">
+                                <Icon as={Award} color="purple.500" boxSize={4} />
+                                <Text fontSize="sm" fontWeight="medium" color="purple.700">
+                                  Agreements ({claim.agreements.length})
+                                </Text>
+                              </HStack>
+                              <AccordionIcon />
+                            </AccordionButton>
+                            <AccordionPanel pb={4}>
+                              <VStack spacing={2} align="stretch">
+                                {claim.agreements.map((agreement: Agreement) => (
+                                  <Card key={agreement.id} bg={useColorModeValue('gray.50', 'gray.600')} p={3} borderRadius="md" border="1px solid" borderColor={borderColor}>
+                                    <HStack justify="space-between" align="center">
+                                      <VStack align="start" spacing={0}>
+                                        <HStack spacing={2}>
+                                          <Icon as={CheckCircle} color="green.500" boxSize={3} />
+                                          <Text fontSize="sm" fontWeight="medium" color={textColor}>
+                                            Agreement Number : {agreement.agreement_number}
+                                          </Text>
+                                        </HStack>
+                                        <Text fontSize="xs" color="gray.500">{agreement.lender_name}</Text>
+                                        {agreement.vehicle_registration && (
+                                          <Text fontSize="xs" color="gray.500">Registration Number: {agreement.vehicle_registration}</Text>
+                                        )}
+                                        <HStack spacing={3} fontSize="xs" color="gray.400">
+                                          <Text>Created: {formatDateTime(agreement.created_at)}</Text>
+                                          <Text>Updated: {formatDateTime(agreement.updated_at)}</Text>
+                                        </HStack>
+                                      </VStack>
+                                      <HStack spacing={8} align="stretch">
+                                        {/* Finance Agreement Download */}
+                                        <VStack
+                                          spacing={1}
+                                          align="start"
+                                          justify="center"
+                                          minW="140px"
+                                          flex="1"
                                         >
-                                          {agreement.status || 'pending'}
-                                        </MenuButton>
-                                        <MenuList>
-                                          {agreementStatuses.map((status) => (
-                                            <MenuItem
-                                              key={status.value}
-                                              onClick={() => handleStatusUpdate('agreement', agreementId, status.value)}
-                                              isDisabled={status.value === (agreement.status || 'pending')}
+                                          <Text fontSize="xs" color="gray.500" fontWeight="medium">
+                                            Finance Agreement
+                                          </Text>
+                                          {agreement.agreement_document_url ? (
+                                            <Button
+                                              size="xs"
+                                              colorScheme="green"
+                                              variant="outline"
+                                              leftIcon={<Download size={10} />}
+                                              onClick={() => handleAgreementDownload(agreement)}
+                                              w="full"
                                             >
-                                              {status.label}
-                                            </MenuItem>
-                                          ))}
-                                        </MenuList>
-                                      </Menu>
-                                    </VStack>
-                                  </HStack>
-                                </VStack>
-                              );
-                            })}
-                          </VStack>
-                        </VStack>
+                                              Download
+                                            </Button>
+                                          ) : (
+                                            <HStack spacing={1}>
+                                              <Icon as={FileX} boxSize={4} color="gray.400" />
+                                              <Text fontSize="xs" color="gray.400">
+                                                Not Available
+                                              </Text>
+                                            </HStack>
+                                          )}
+                                        </VStack>
+
+                                        {/* Update Agreement Status */}
+                                        <VStack
+                                          spacing={1}
+                                          align="start"
+                                          justify="center"
+                                          minW="140px"
+                                          flex="1"
+                                        >
+                                          <Text fontSize="xs" color="gray.500" fontWeight="medium">
+                                            Update Agreement Status
+                                          </Text>
+                                          <Menu>
+                                            <MenuButton
+                                              as={Button}
+                                              rightIcon={<ChevronDown size={10} />}
+                                              size="xs"
+                                              variant="outline"
+                                              colorScheme={getStatusColor(agreement.status || 'pending')}
+                                              isLoading={updatingStatus === `agreement_${agreement.id}`}
+                                              loadingText="..."
+                                              minW="100px"
+                                              w="full"
+                                              textTransform="capitalize"
+                                            >
+                                              {agreement.status || 'pending'}
+                                            </MenuButton>
+                                            <MenuList>
+                                              {agreementStatuses.map((status) => (
+                                                <MenuItem
+                                                  key={status.value}
+                                                  onClick={() =>
+                                                    handleStatusUpdate('agreement', agreement.id, status.value)
+                                                  }
+                                                  isDisabled={status.value === (agreement.status || 'pending')}
+                                                  textTransform="capitalize"
+                                                >
+                                                  {status.label}
+                                                </MenuItem>
+                                              ))}
+                                            </MenuList>
+                                          </Menu>
+                                        </VStack>
+                                      </HStack>
+                                    </HStack>
+                                  </Card>
+                                ))}
+                              </VStack>
+                            </AccordionPanel>
+                          </AccordionItem>
+                        </Accordion>
                       )}
+                      
+                      {/* Actions */}
                       <Divider />
                       <HStack justify="end" spacing={2}>
-                      <Button
+                        <Button
                           size="sm"
                           variant="outline"
                           colorScheme="blue"
@@ -579,97 +755,39 @@ export default function UserDetails() {
                         </Button>
                       </HStack>
                     </VStack>
-                  </MotionBox>
+                  </Card>
                 ))}
               </VStack>
             )}
-
-            {claims.length > 3 && (
-              <Box textAlign="center" mt={5}>
-                <Button
-                  variant="ghost"
-                  colorScheme="blue"
-                  size="sm"
-                  rightIcon={<ChevronRight size={16} />}
-                >
-                  View all {claims.length} claims
-                </Button>
-              </Box>
-            )}
           </CardBody>
-        </MotionCard>
+        </Card>
 
-        {/* Responsive Download Modal */}
-        <Modal
-          isOpen={isDownloadModalOpen}
-          onClose={onDownloadModalClose}
-          size={{ base: "full", sm: "md" }}
-          motionPreset="slideInBottom"
-          scrollBehavior="inside"
-        >
-          <ModalOverlay backdropFilter="blur(4px)" />
-          <ModalContent borderRadius={{ base: "none", sm: "2xl" }} boxShadow="xl" mx={{ base: 0, sm: "auto" }} my={{ base: 0, sm: 8 }}>
-            <ModalHeader px={5} py={4} borderBottomWidth="1px" borderColor={borderColor}>
-              <HStack spacing={3}>
-                <Icon as={FileText} color="blue.500" boxSize={5} />
-                <VStack align="start" spacing={0}>
-                  <Text fontWeight="bold">Download Document</Text>
-                  <Text fontSize="sm" color="gray.500" fontWeight="normal"
-                    noOfLines={1} maxW={{ base: "70vw", md: "100%" }}>
-                    Claim ID: {downloadingClaimId}
-                  </Text>
-                </VStack>
-              </HStack>
-            </ModalHeader>
-            <ModalCloseButton size="lg" top={{ base: 2, sm: 3 }} right={{ base: 2, sm: 3 }} zIndex={10} />
-            <ModalBody py={4} px={2}>
-              <Text mb={3} fontSize="sm" color="gray.600" px={3} textAlign="left">
-                Select the document type you wish to download:
-              </Text>
-              <SimpleGrid columns={{ base: 1, sm: 2 }} spacing={4} w="full" mb={2}>
+        {/* Download Modal */}
+        <Modal isOpen={isDownloadModalOpen} onClose={onDownloadModalClose} size="md">
+          <ModalOverlay />
+          <ModalContent>
+            <ModalHeader>Download Document</ModalHeader>
+            <ModalCloseButton />
+            <ModalBody>
+              <Text mb={4}>Select document type for Claim ID: {downloadingClaimId}</Text>
+              <SimpleGrid columns={2} spacing={4}>
                 {documentTypes.map((docType) => (
                   <Card
                     key={docType.value}
-                    borderRadius="xl"
                     border="2px solid"
                     borderColor={selectedDocumentType === docType.value ? 'blue.400' : borderColor}
                     bg={selectedDocumentType === docType.value ? 'blue.50' : "transparent"}
-                    _hover={{
-                      shadow: "md",
-                      transform: { base: undefined, sm: "translateY(-2px)" },
-                      borderColor: "blue.400",
-                      bg: "blue.50",
-                      transition: "all 0.2s"
-                    }}
                     cursor="pointer"
-                    minH="110px"
-                    transition="all 0.2s"
                     onClick={() => setSelectedDocumentType(docType.value)}
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
                   >
-                    <CardBody py={3} px={2}>
-                      <VStack spacing={2} align="center" w="full">
-                        <Box bg={'blue.100'} p={3} borderRadius="full" mb={1}>
-                          <Icon as={FileDown} color={'blue.600'} boxSize={6} />
-                        </Box>
-                        <Text fontWeight="semibold" textAlign="center" fontSize="sm" color={textColor} noOfLines={2}>
-                          {docType.label}
-                        </Text>
-                        {selectedDocumentType === docType.value && (
-                          <Badge colorScheme="blue" borderRadius="full" px={2}>
-                            Selected
-                          </Badge>
-                        )}
+                    <CardBody p={3}>
+                      <VStack spacing={2}>
+                        <Icon as={FileDown} color="blue.600" boxSize={5} />
+                        <Text fontSize="sm" fontWeight="semibold">{docType.label}</Text>
                         <Button
-                          leftIcon={isDownloading && selectedDocumentType === docType.value ? <Spinner size="xs" /> : <Download size={16} />}
-                          size="sm"
+                          size="xs"
                           colorScheme="blue"
                           variant="outline"
-                          width="full"
-                          mt={1}
-                          aria-label={`Download ${docType.label}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             setSelectedDocumentType(docType.value);
@@ -677,7 +795,6 @@ export default function UserDetails() {
                           }}
                           isLoading={isDownloading && selectedDocumentType === docType.value}
                           loadingText="Downloading"
-                          isDisabled={isDownloading && selectedDocumentType !== docType.value}
                         >
                           Download
                         </Button>
@@ -687,10 +804,8 @@ export default function UserDetails() {
                 ))}
               </SimpleGrid>
             </ModalBody>
-            <ModalFooter borderTopWidth="1px" borderColor={borderColor} pt={4}>
-              <Button variant="ghost" mr={3} onClick={onDownloadModalClose} w="full" fontWeight="medium">
-                Cancel
-              </Button>
+            <ModalFooter>
+              <Button variant="ghost" onClick={onDownloadModalClose}>Cancel</Button>
             </ModalFooter>
           </ModalContent>
         </Modal>

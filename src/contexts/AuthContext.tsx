@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { authAPI } from '../api/auth';
 import type { LoginCredentials, LoginResponse } from '../api/auth';
+import { secureTokenStorage, loginRateLimiter, sanitizeInput, isValidEmail } from '../utils/security';
 
 interface User {
   id: string;
@@ -29,18 +30,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Check if user is already logged in on app start
   useEffect(() => {
     const checkAuth = async () => {
-      const token = localStorage.getItem('authToken') || localStorage.getItem('access_token');
-      const savedUser = localStorage.getItem('user');
+      const token = secureTokenStorage.getToken('authToken') || secureTokenStorage.getToken('access_token');
+      const savedUser = secureTokenStorage.getToken('user');
 
       if (token && savedUser) {
         try {
           setUser(JSON.parse(savedUser));
         } catch (error) {
-          console.error('Error parsing saved user:', error);
-          localStorage.removeItem('authToken');
-          localStorage.removeItem('access_token');
-          localStorage.removeItem('refresh_token');
-          localStorage.removeItem('user');
+          secureTokenStorage.clearAllTokens();
         }
       }
       setIsLoading(false);
@@ -54,9 +51,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       setIsLoading(true);
       setError(null);
       
-      console.log('Attempting login with:', credentials);
-      const response: LoginResponse = await authAPI.login(credentials);
-      console.log('Login response:', response);
+      // Sanitize inputs
+      const sanitizedEmail = sanitizeInput(credentials.email);
+      const sanitizedPassword = sanitizeInput(credentials.password);
+      
+      // Validate email
+      if (!isValidEmail(sanitizedEmail)) {
+        throw new Error('Invalid email format');
+      }
+      
+      const response: LoginResponse = await authAPI.login({ 
+        email: sanitizedEmail, 
+        password: sanitizedPassword 
+      });
       
       // Handle the actual response structure
       const token = response.tokens?.access;
@@ -68,25 +75,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       
       const userData: User = {
         id: response.admin_id || '1',
-        email: credentials.email,
-        name: credentials.email.split('@')[0],
+        email: sanitizedEmail,
+        name: sanitizedEmail.split('@')[0],
         role: 'admin'
       };
       
-      console.log('Processed token:', token);
-      console.log('Processed user data:', userData);
-      
-      // Save tokens and user data
-      localStorage.setItem('authToken', token);
-      localStorage.setItem('access_token', token);
-      localStorage.setItem('refresh_token', refreshToken || '');
-      localStorage.setItem('user', JSON.stringify(userData));
+      // Save tokens and user data securely
+      secureTokenStorage.setToken('authToken', token);
+      secureTokenStorage.setToken('access_token', token);
+      secureTokenStorage.setToken('refresh_token', refreshToken || '');
+      secureTokenStorage.setToken('user', JSON.stringify(userData));
       
       setUser(userData);
-      console.log('User state updated:', userData);
       
     } catch (error: any) {
-      console.error('Login error:', error);
+      // Record failed attempt for rate limiting
+      if (credentials.email) {
+        loginRateLimiter.recordAttempt(credentials.email);
+      }
       
       if (error.response?.data?.message) {
         setError(error.response.data.message);
@@ -108,13 +114,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     try {
       await authAPI.logout();
     } catch (error) {
-      console.error('Logout error:', error);
+      // Continue with logout even if API call fails
     } finally {
-      // Clear all tokens and user data
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('access_token');
-      localStorage.removeItem('refresh_token');
-      localStorage.removeItem('user');
+      // Clear all tokens and user data securely
+      secureTokenStorage.clearAllTokens();
       setUser(null);
     }
   };

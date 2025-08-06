@@ -1,11 +1,13 @@
 import axios , {AxiosError}from 'axios';
 import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios';
-// API Configuration
-const API_BASE_URL = 'https://preprod.theclaimpeople.com/api/v1';
+import { secureTokenStorage, csrfProtection } from '../utils/security';
+
+// API Configuration - Use environment variable with fallback
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://preprod.theclaimpeople.com/api/v1';
 
 // Create axios instance
 const api = axios.create({
-  baseURL: API_BASE_URL || import.meta.env.VITE_API_BASE_URL,
+  baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json',
   },
@@ -14,15 +16,16 @@ const api = axios.create({
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
-    // Get token from localStorage - try both authToken and access_token
-    const token = localStorage.getItem('authToken') || localStorage.getItem('access_token');
+    // Get token from secure storage
+    const token = secureTokenStorage.getToken('authToken') || secureTokenStorage.getToken('access_token');
     
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
     
-    console.log('Request:', config.method?.toUpperCase(), config.url);
-    console.log('Authorization header:', config.headers.Authorization ? 'Bearer [TOKEN]' : 'None');
+    // Add CSRF protection
+    const csrfHeaders = csrfProtection.addCSRFHeader(config.headers as Record<string, string>);
+    Object.assign(config.headers, csrfHeaders);
     
     // Add timestamp to prevent caching issues
     if (config.method === 'get') {
@@ -35,7 +38,6 @@ api.interceptors.request.use(
     return config;
   },
   (error) => {
-    console.error('Request Error:', error);
     return Promise.reject(error);
   }
 );
@@ -54,7 +56,7 @@ api.interceptors.response.use(
 
       try {
         // Try to refresh the token
-        const refreshToken = localStorage.getItem('refresh_token');
+        const refreshToken = secureTokenStorage.getToken('refresh_token');
         
         if (!refreshToken) {
           // No refresh token, redirect to login
@@ -68,10 +70,10 @@ api.interceptors.response.use(
           { refresh_token: refreshToken }
         );
         
-        // Store the new tokens
+        // Store the new tokens securely
         const { access_token, refresh_token } = response.data;
-        localStorage.setItem('access_token', access_token);
-        localStorage.setItem('refresh_token', refresh_token);
+        secureTokenStorage.setToken('access_token', access_token);
+        secureTokenStorage.setToken('refresh_token', refresh_token);
         
         // Update Authorization header and retry request
         if (originalRequest.headers) {
@@ -80,9 +82,8 @@ api.interceptors.response.use(
         
         return api(originalRequest);
       } catch (refreshError) {
-        // Refresh token failed, redirect to login
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
+        // Refresh token failed, clear tokens and redirect to login
+        secureTokenStorage.clearAllTokens();
         // window.location.href = '/login';
         
         return Promise.reject(refreshError);

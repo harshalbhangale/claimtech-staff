@@ -103,8 +103,6 @@ export default function Claims() {
         params.type = typeFilter;
       }
 
-      console.log('Fetching claims with params:', params);
-      
       const response = await claimsAPI.getClaims(params);
       
       // Handle response structure
@@ -114,13 +112,7 @@ export default function Claims() {
       setClaims(claimsData);
       setTotalCount(totalCount);
       
-      console.log('Claims fetched successfully:', response);
-      console.log('Claims data:', claimsData);
-      console.log('First claim structure:', claimsData[0]);
-      
     } catch (err: any) {
-      console.error('Error fetching claims:', err);
-      
       let errorMessage = 'Failed to fetch claims. Please try again.';
       if (err.response?.status === 401) {
         errorMessage = 'Authentication failed. Please log in again.';

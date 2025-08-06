@@ -35,7 +35,6 @@ export default function Login() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      console.log('User is authenticated, redirecting to dashboard');
       navigate('/dashboard');
     }
   }, [isAuthenticated, navigate]);
@@ -89,17 +88,14 @@ export default function Login() {
     }
 
     try {
-      console.log('Submitting login form...');
       // Clear any previous backend error before new attempt
       clearError();
       setShowBackendError(false);
 
       await login({ email, password });
-      console.log('Login successful, user should be redirected');
       // Don't navigate here - let the useEffect handle it
     } catch (err) {
       // Error is handled by the auth context and will trigger useEffect for setShowBackendError
-      console.error('Login failed:', err);
     }
   };
 

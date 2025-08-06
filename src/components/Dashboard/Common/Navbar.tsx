@@ -21,7 +21,7 @@ import {
 } from '@chakra-ui/react';
 import { ChevronDown, Menu as MenuIcon, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../../contexts/AuthContext';
 import Sidebar from './Sidebar';
 
 export default function Navbar() {

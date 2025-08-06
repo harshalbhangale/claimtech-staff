@@ -1,15 +1,17 @@
 import { Box, useBreakpointValue } from '@chakra-ui/react';
-import Navbar from '@/components/Dashboard/Navbar';
-import Sidebar from '@/components/Dashboard/Sidebar';
+import Navbar from '@/components/Dashboard/Common/Navbar';
+import Sidebar from '@/components/Dashboard/Common/Sidebar';
+import { useSidebar } from '../contexts/SidebarContext';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
 }
 
 export default function DashboardLayout({ children }: DashboardLayoutProps) {
+  const { sidebarWidth } = useSidebar();
+  
   // Responsive values for different screen sizes
-  const sidebarWidth = useBreakpointValue({ base: '0px', md: '280px' });
-  const contentMarginLeft = useBreakpointValue({ base: '0px', md: '280px' });
+  const contentMarginLeft = useBreakpointValue({ base: '0px', md: sidebarWidth });
   const contentPadding = useBreakpointValue({ base: 4, md: 6 });
   const navbarHeight = useBreakpointValue({ base: '64px', md: '72px' });
   
@@ -47,6 +49,7 @@ export default function DashboardLayout({ children }: DashboardLayoutProps) {
         p={contentPadding}
         minH={`calc(100vh - ${navbarHeight})`}
         w={{ base: '100%', md: `calc(100% - ${sidebarWidth})` }}
+        transition="margin-left 0.2s ease, width 0.2s ease"
       >
         {children}
       </Box>

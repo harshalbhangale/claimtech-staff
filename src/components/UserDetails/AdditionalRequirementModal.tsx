@@ -43,7 +43,7 @@ import {
     User
   } from 'lucide-react';
   import { useState, useEffect } from 'react';
-  import { requirementsAPI, type RequirementItem } from '../../../api/requirements';
+  import { requirementsAPI, type RequirementItem } from '../../api/requirements';
   
   interface RequirementRequestModalProps {
     isOpen: boolean;
@@ -196,8 +196,7 @@ import {
         default: return FileText;
       }
     };
-  
-    // **FIX: Ensure requirements is always an array before rendering**
+    
     const safeRequirements = Array.isArray(requirements) ? requirements : [];
   
     return (

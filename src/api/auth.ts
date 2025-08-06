@@ -1,4 +1,5 @@
 import apiClient from './config';
+import { secureTokenStorage } from '../utils/security';
 
 export interface LoginCredentials {
   email: string;
@@ -25,11 +26,10 @@ export const authAPI = {
     try {
       await apiClient.post('/accounts/logout/');
     } catch (error) {
-      console.error('Logout error:', error);
+      // Continue with logout even if API call fails
     } finally {
       // Clear local storage regardless of API call success
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('user');
+      secureTokenStorage.clearAllTokens();
     }
   },
 
