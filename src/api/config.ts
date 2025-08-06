@@ -3,7 +3,7 @@ import type { AxiosResponse, InternalAxiosRequestConfig } from 'axios';
 import { secureTokenStorage, csrfProtection } from '../utils/security';
 
 // API Configuration - Use environment variable with fallback
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://preprod.theclaimpeople.com/api/v1';
+const API_BASE_URL = 'https://preprod.theclaimpeople.com/api/v1';
 
 // Create axios instance
 const api = axios.create({
